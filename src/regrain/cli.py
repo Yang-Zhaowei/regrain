@@ -15,6 +15,9 @@ from .render import (
     load_and_validate_script,
     render_speech,
 )
+from .artifacts import ArtifactError
+from .production import assemble_speech, create_assembly_plan, import_render_run
+from .external_audio import align_speech, load_audio_request
 
 
 class _UsageError(Exception):
@@ -29,7 +32,7 @@ class _Parser(argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="regrain",
-        description="Validate or render caller-authored speech; results are UTF-8 JSON.",
+        description="Render, align and revise speech; results are UTF-8 JSON.",
         allow_abbrev=False,
     )
     from . import __version__
@@ -56,11 +59,27 @@ def build_parser() -> argparse.ArgumentParser:
             for name in ("tts-python", "alignment-python", "tts-model", "alignment-model"):
                 sub.add_argument(
                     "--" + name,
-                    help="override MEDIA_PIPELINE_" + name.upper().replace("-", "_"),
+                    help="override REGRAIN_" + name.upper().replace("-", "_"),
                 )
             sub.add_argument(
                 "--device", default="cuda:0", help="model device (default: cuda:0)"
             )
+    for command, argument, help_text in (
+        ("assemble", "plan", "assemble pinned speech Units without model calls"),
+        ("align", "request", "align supplied audio and exact transcripts"),
+        ("plan", "run", "export an editable, pinned assembly plan"),
+        ("import-run", "run", "snapshot completed legacy render Units"),
+    ):
+        sub = commands.add_parser(command, allow_abbrev=False, help=help_text)
+        sub.add_argument(argument)
+        sub.add_argument("--output", required=True)
+        if command == "align":
+            sub.add_argument("--alignment-python", help="override REGRAIN_ALIGNMENT_PYTHON")
+            sub.add_argument("--alignment-model", help="override REGRAIN_ALIGNMENT_MODEL")
+            sub.add_argument("--device", default="cuda:0")
+    # Reuse the existing deterministic caption compiler's argument contract.
+    from .captions_cli import build_parser as captions_parser
+    groups.add_parser("captions", parents=[captions_parser()], add_help=False, allow_abbrev=False)
     return parser
 
 
@@ -79,12 +98,65 @@ def _path(path: str | Path | None) -> str | None:
     return str(Path(path).resolve()) if path is not None else None
 
 
+def _production_command(args: argparse.Namespace) -> int:
+    command = args.command
+    try:
+        if command == "align":
+            # Validate caller audio/transcript before requesting any runtime configuration.
+            try:
+                load_audio_request(args.request)
+            except (ValueError, OSError) as exc:
+                _emit(command, "validation_failed", error=str(exc))
+                return 3
+            runtime = {}
+            for name in ("alignment_python", "alignment_model"):
+                value = getattr(args, name)
+                if value is None:
+                    value = os.environ.get("REGRAIN_" + name.upper())
+                if not value or not value.strip():
+                    _emit(command, "error", error="missing runtime configuration: REGRAIN_" + name.upper())
+                    return 2
+                runtime[name] = value
+            result = align_speech(args.request, args.output, device=args.device, **runtime)
+        elif command == "assemble":
+            result = assemble_speech(args.plan, args.output)
+        elif command == "plan":
+            path = create_assembly_plan(args.run, args.output)
+            _emit(command, "complete", plan_path=_path(path))
+            return 0
+        else:
+            path = import_render_run(args.run, args.output)
+            _emit(command, "complete", run_dir=_path(path), report_path=_path(path / "report.json"))
+            return 0
+    except RenderError as exc:
+        report = exc.run_dir / "report.json" if exc.run_dir is not None else None
+        validation = exc.run_dir is None and isinstance(exc.__cause__, (ArtifactError, OSError, ValueError))
+        _emit(command, "failed" if exc.run_dir is not None else ("validation_failed" if validation else "error"), error=str(exc),
+              run_dir=_path(exc.run_dir), report_path=_path(report) if report is not None and report.is_file() else None,
+              wav_path=None, srt_path=None, timeline_path=None)
+        return 5 if exc.run_dir is not None else (3 if validation else 2)
+    except (ArtifactError, OSError, ValueError) as exc:
+        _emit(command, "error", error=str(exc), wav_path=None, srt_path=None, timeline_path=None)
+        return 2
+    _emit(command, result.status, run_dir=_path(result.run_dir), report_path=_path(result.report_path),
+          wav_path=_path(result.wav_path), srt_path=_path(result.srt_path), timeline_path=_path(result.timeline_path),
+          segments=[asdict(seg) for seg in result.segments])
+    return 0 if result.status == STATUS_COMPLETE else 4
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "captions":
+        from .captions_cli import main as captions_main
+        return captions_main(argv[1:])
     try:
         args = build_parser().parse_args(argv)
     except _UsageError as exc:
         _emit(None, "error", error=str(exc))
         return 2
+
+    if args.command in ("assemble", "align", "plan", "import-run"):
+        return _production_command(args)
 
     # Static preflight always precedes runtime configuration and rendering.
     # The renderer retains its own preflight; its Python API stays untouched.
@@ -133,12 +205,10 @@ def main(argv: list[str] | None = None) -> int:
     runtime = {}
     missing = []
     for name in ("tts_python", "alignment_python", "tts_model", "alignment_model"):
-        env_name = "MEDIA_PIPELINE_" + name.upper()
-        # Keep the Alignment aliases and precedence used by the E2E driver.
-        legacy = "MEDIA_" + name.upper() if name.startswith("alignment_") else env_name
+        env_name = "REGRAIN_" + name.upper()
         value = getattr(args, name)
         if value is None:
-            value = os.environ.get(legacy) or os.environ.get(env_name)
+            value = os.environ.get(env_name)
         if not value or not value.strip():
             missing.append("--" + name.replace("_", "-") + " / " + env_name)
         runtime[name] = value

@@ -82,7 +82,11 @@ Verified:
 - `Qwen3-ForcedAligner-0.6B`
 
 Current status: Production Alignment module v0 implemented; GPU integration
-test gated on `MEDIA_PIPELINE_ALIGNMENT_MODEL`, validated on ai-core.
+test gated on `REGRAIN_ALIGNMENT_MODEL`, validated on ai-core. The v0.2.0
+package/import and environment-variable migration is breaking; see the
+[naming migration](../naming.md). Existing TTS and aligner environments and
+model directories remain at their recorded locations; this documentation
+update did not move or recreate them.
 
 ## Model locations
 

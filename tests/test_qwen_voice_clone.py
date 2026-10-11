@@ -18,10 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.postprocess import read_wav, write_wav
-from media_pipeline.runtimes import qwen_voice_clone as runtime
-from media_pipeline.tts import TTSArtifact, TTSRuntimeError
-from media_pipeline.voice_clone import (
+from regrain.postprocess import read_wav, write_wav
+from regrain.runtimes import qwen_voice_clone as runtime
+from regrain.tts import TTSArtifact, TTSRuntimeError
+from regrain.voice_clone import (
     VoiceAssetError, VoiceCloneAsset, VoiceCloneError,
     VoiceCloneReference, VoiceCloneRequest,
 )
@@ -244,7 +244,7 @@ import sys
 sys.path[:0] = [{str(src)!r}, {str(tests)!r}]
 from test_qwen_voice_clone import make_torch
 sys.modules['torch'] = make_torch()
-from media_pipeline.runtimes.qwen_voice_clone import load_voice_asset
+from regrain.runtimes.qwen_voice_clone import load_voice_asset
 asset = load_voice_asset({str(path)!r})
 item = asset.payload['items'][0]
 assert item['ref_code'].data == [[1, 2], [3, 4]]
@@ -356,9 +356,9 @@ class BlockTorch(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {{'qwen_tts', 'numpy', 'soundfile'}}:
             raise AssertionError('unexpected heavy dependency: ' + fullname)
 sys.meta_path.insert(0, BlockTorch())
-from media_pipeline.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, save_voice_asset, load_voice_asset
-from media_pipeline.voice_clone import VoiceAssetError, VoiceCloneAsset
-from media_pipeline.tts import TTSRuntimeError
+from regrain.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, save_voice_asset, load_voice_asset
+from regrain.voice_clone import VoiceAssetError, VoiceCloneAsset
+from regrain.tts import TTSRuntimeError
 for operation, expected in [
     (lambda: Qwen3VoiceCloneTTS('unavailable-model'), TTSRuntimeError),
     (lambda: save_voice_asset(VoiceCloneAsset({{}}), 'not-written.pt'), VoiceAssetError),
@@ -377,8 +377,8 @@ assert not {{'torch', 'qwen_tts', 'numpy', 'soundfile'}}.intersection(sys.module
 
 
 def test_existing_custom_voice_keeps_request_semantics_and_loaded_engine(fake_runtime, tmp_path) -> None:
-    from media_pipeline.runtimes.qwen_tts import Qwen3CustomVoiceTTS
-    from media_pipeline.tts import CustomVoiceRequest
+    from regrain.runtimes.qwen_tts import Qwen3CustomVoiceTTS
+    from regrain.tts import CustomVoiceRequest
 
     custom_calls = []
     def generate_custom_voice(**kwargs):

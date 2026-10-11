@@ -17,7 +17,7 @@ def sha256_file(path: Path) -> str:
 
 
 def load_asset(path):
-    from media_pipeline.runtimes.qwen_voice_clone import load_voice_asset
+    from regrain.runtimes.qwen_voice_clone import load_voice_asset
     return load_voice_asset(path)
 
 
@@ -35,7 +35,7 @@ class ExperimentEngine:
             raise ValueError(f"audit requires qwen-tts 0.1.1, found {version}")
         import numpy as np
         import torch
-        from media_pipeline.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS
+        from regrain.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS
 
         random.seed(seed)
         np.random.seed(seed)
@@ -74,9 +74,9 @@ class ExperimentEngine:
                 "checkpoint_generation_defaults": self.engine._model.generate_defaults}
 
     def generate(self, asset, inputs, language, controls, paths, *, batch=False):
-        from media_pipeline.voice_clone import VoiceCloneRequest, validate_request
-        from media_pipeline.postprocess import read_wav, write_wav
-        from media_pipeline.tts import waveform_to_mono_pcm16
+        from regrain.voice_clone import VoiceCloneRequest, validate_request
+        from regrain.postprocess import read_wav, write_wav
+        from regrain.tts import waveform_to_mono_pcm16
 
         for item in inputs:
             validate_request(VoiceCloneRequest(item["text"], language))

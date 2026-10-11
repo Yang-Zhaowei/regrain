@@ -6,7 +6,7 @@ audio postprocess stage, and the portable TTS contracts (request/output types,
 validation, PCM16 conversion). All of these are pure logic that run without
 CUDA.
 
-The GPU/model runtime adapters live under :mod:`media_pipeline.runtimes` and are
+The GPU/model runtime adapters live under :mod:`regrain.runtimes` and are
 intentionally **not** exported here: importing this package never pulls in
 ``torch``, ``qwen_tts``, ``qwen_asr``, or ``soundfile``.
 """
@@ -73,7 +73,7 @@ from .render import (
 
 # NOTE: alignment.py also defines a ``validate_request``; it is intentionally
 # *not* re-exported at the package root to avoid shadowing the TTS validator.
-# Import it explicitly from :mod:`media_pipeline.alignment` when needed.
+# Import it explicitly from :mod:`regrain.alignment` when needed.
 
 __all__ = [
     "AlignedToken",
@@ -127,4 +127,11 @@ __all__ = [
     "write_wav",
 ]
 
-__version__ = "0.1.0"
+from .artifacts import ArtifactError, SpeechUnit, create_unit, load_unit
+from .production import assemble_speech, create_assembly_plan, import_render_run
+from .external_audio import align_speech
+
+__all__ += ["ArtifactError", "SpeechUnit", "create_unit", "load_unit", "assemble_speech",
+            "create_assembly_plan", "import_render_run", "align_speech"]
+
+__version__ = "0.2.0"

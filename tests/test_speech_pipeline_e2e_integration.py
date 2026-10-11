@@ -13,16 +13,14 @@ validation sequence realised as a gated integration test.
 Gating mirrors the existing integration tests: this test runs only when all of
 the following environment variables are set (never hard-coded here):
 
-- ``MEDIA_PIPELINE_TTS_MODEL`` -- Qwen3-TTS CustomVoice model path;
-- ``MEDIA_ALIGNMENT_MODEL`` or ``MEDIA_ALIGNMENT_MODEL`` -- Qwen3 ForcedAligner
+- ``REGRAIN_TTS_MODEL`` -- Qwen3-TTS CustomVoice model path;
+- ``REGRAIN_ALIGNMENT_MODEL`` -- Qwen3 ForcedAligner
   model path;
-- ``MEDIA_PIPELINE_TTS_PYTHON`` -- interpreter of the TTS environment;
-- ``MEDIA_ALIGNMENT_PYTHON`` or ``MEDIA_PIPELINE_ALIGNMENT_PYTHON`` --
+- ``REGRAIN_TTS_PYTHON`` -- interpreter of the TTS environment;
+- ``REGRAIN_ALIGNMENT_PYTHON`` --
   interpreter of the Alignment environment.
 
-A run is gated only when *every* alias for a slot is unset, so a GPU E2E env
-configured with either the short ``MEDIA_ALIGNMENT_*`` alias or the long
-``MEDIA_ALIGNMENT_*`` alias is never wrongly skipped.
+Only the canonical ``REGRAIN_*`` variables configure the new package.
 
 Absence of any of them means GPU integration was not requested, so the test
 skips. When all are set, integration is explicitly requested: a missing
@@ -46,8 +44,8 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.postprocess import read_wav, write_wav
-from media_pipeline.tts import TTSArtifact
+from regrain.postprocess import read_wav, write_wav
+from regrain.tts import TTSArtifact
 
 from e2e_validation import run_chain, validate_e2e
 
@@ -58,32 +56,18 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC = _REPO_ROOT / "src"
 
 
-def _any_alias(*names: str) -> str | None:
-    """Return the first set environment variable in ``names`` (or ``None``)."""
-
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return value
-    return None
+def _read_runtime() -> dict[str, str | None]:
+    return {
+        name: os.environ.get("REGRAIN_" + name.upper())
+        for name in ("tts_model", "tts_python", "alignment_model", "alignment_python")
+    }
 
 
-_TTS_MODEL = os.environ.get("MEDIA_PIPELINE_TTS_MODEL")
-_TTS_PYTHON = os.environ.get("MEDIA_PIPELINE_TTS_PYTHON")
-_ALIGNMENT_MODEL = _any_alias("MEDIA_ALIGNMENT_MODEL", "MEDIA_PIPELINE_ALIGNMENT_MODEL")
-_ALIGNMENT_PYTHON = _any_alias(
-    "MEDIA_ALIGNMENT_PYTHON", "MEDIA_PIPELINE_ALIGNMENT_PYTHON"
-)
-
-# The Alignment model and python slots each accept two documented aliases.
-_ALIGNMENT_MODEL_ALIASES = (
-    "MEDIA_ALIGNMENT_MODEL",
-    "MEDIA_PIPELINE_ALIGNMENT_MODEL",
-)
-_ALIGNMENT_PYTHON_ALIASES = (
-    "MEDIA_ALIGNMENT_PYTHON",
-    "MEDIA_PIPELINE_ALIGNMENT_PYTHON",
-)
+_RUNTIME = _read_runtime()
+_TTS_MODEL = _RUNTIME["tts_model"]
+_TTS_PYTHON = _RUNTIME["tts_python"]
+_ALIGNMENT_MODEL = _RUNTIME["alignment_model"]
+_ALIGNMENT_PYTHON = _RUNTIME["alignment_python"]
 
 # A fresh Chinese narration utterance, read-only: never modified, never used as
 # a substitute for the produced WAV.
@@ -96,10 +80,10 @@ _INSTRUCT = (
 _missing = [
     name
     for name, value in (
-        ("MEDIA_PIPELINE_TTS_MODEL", _TTS_MODEL),
-        ("MEDIA_PIPELINE_TTS_PYTHON", _TTS_PYTHON),
-        (_ALIGNMENT_MODEL_ALIASES[0], _ALIGNMENT_MODEL),
-        (_ALIGNMENT_PYTHON_ALIASES[0], _ALIGNMENT_PYTHON),
+        ("REGRAIN_TTS_MODEL", _TTS_MODEL),
+        ("REGRAIN_TTS_PYTHON", _TTS_PYTHON),
+        ("REGRAIN_ALIGNMENT_MODEL", _ALIGNMENT_MODEL),
+        ("REGRAIN_ALIGNMENT_PYTHON", _ALIGNMENT_PYTHON),
     )
     if not value
 ]
@@ -148,8 +132,8 @@ import json
 import sys
 from pathlib import Path
 
-from media_pipeline import CustomVoiceRequest
-from media_pipeline.runtimes.qwen_tts import Qwen3CustomVoiceTTS
+from regrain import CustomVoiceRequest
+from regrain.runtimes.qwen_tts import Qwen3CustomVoiceTTS
 
 model_path, out_wav, request = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
 engine = Qwen3CustomVoiceTTS(model_path)
@@ -169,9 +153,9 @@ import json
 import sys
 from pathlib import Path
 
-from media_pipeline.alignment import AlignmentRequest, validate_wav
-from media_pipeline.captions import load_alignment
-from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+from regrain.alignment import AlignmentRequest, validate_wav
+from regrain.captions import load_alignment
+from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
 
 model_path, out_align, wav, request = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
 engine = Qwen3ForcedAlignment(model_path)
@@ -224,7 +208,7 @@ def _subprocess_align_engine(run_dir: Path, align_python: str, align_model: str)
         artifact_meta = json.loads(
             Path(str(output_alignment_path) + ".artifact.json").read_text(encoding="utf-8")
         )
-        from media_pipeline.alignment import AlignmentArtifact
+        from regrain.alignment import AlignmentArtifact
 
         return AlignmentArtifact(
             alignment_path=Path(output_alignment_path),
@@ -262,27 +246,19 @@ def test_full_pipeline_end_to_end(tmp_path: Path) -> None:
 #--- configuration / import hygiene (CPU, no GPU required) -------------------
 
 
-def test_alignment_env_alias_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Supported Alignment env aliases must not cause a wrong skip: whichever
-    # alias is set is honoured, and unset-both yields None (=> gated/skip).
-    monkeypatch.delenv("MEDIA_ALIGNMENT_MODEL", raising=False)
-    monkeypatch.delenv("MEDIA_PIPELINE_ALIGNMENT_MODEL", raising=False)
-    monkeypatch.setenv("MEDIA_PIPELINE_ALIGNMENT_MODEL", "/models/align")
-    assert _any_alias("MEDIA_ALIGNMENT_MODEL", "MEDIA_PIPELINE_ALIGNMENT_MODEL") == "/models/align"
-    monkeypatch.setenv("MEDIA_ALIGNMENT_MODEL", "/short")
-    assert _any_alias(
-        "MEDIA_ALIGNMENT_MODEL", "MEDIA_PIPELINE_ALIGNMENT_MODEL"
-    ) == "/short"
-    monkeypatch.delenv("MEDIA_ALIGNMENT_MODEL", raising=False)
-    monkeypatch.delenv("MEDIA_PIPELINE_ALIGNMENT_MODEL", raising=False)
-    monkeypatch.delenv("MEDIA_ALIGNMENT_PYTHON", raising=False)
-    monkeypatch.delenv("MEDIA_PIPELINE_ALIGNMENT_PYTHON", raising=False)
-    assert _any_alias("MEDIA_ALIGNMENT_PYTHON", "MEDIA_PIPELINE_ALIGNMENT_PYTHON") is None
+def test_runtime_environment_uses_only_canonical_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in _RUNTIME:
+        monkeypatch.delenv("REGRAIN_" + key.upper(), raising=False)
+        monkeypatch.setenv("MEDIA_PIPELINE_" + key.upper(), "legacy pipeline")
+        monkeypatch.setenv("MEDIA_" + key.upper(), "legacy short")
+    assert all(value is None for value in _read_runtime().values())
+    monkeypatch.setenv("REGRAIN_ALIGNMENT_MODEL", "/models/align")
+    assert _read_runtime()["alignment_model"] == "/models/align"
 
 
 def test_embedded_align_stage_imports_load_alignment_from_captions() -> None:
     # The embedded Alignment stage must import ``load_alignment`` from its real
-    # home, :mod:`media_pipeline.captions`, never from :mod:`media_pipeline.alignment`
+    # home, :mod:`regrain.captions`, never from :mod:`regrain.alignment`
     # (which does not define it). An import from the wrong module raises
     # ImportError and aborts a configured real GPU E2E before Alignment runs.
     #
@@ -291,7 +267,7 @@ def test_embedded_align_stage_imports_load_alignment_from_captions() -> None:
     # model, or needing CUDA -- and a regression would fail here on every run.
     import ast
 
-    import media_pipeline.alignment as align_mod
+    import regrain.alignment as align_mod
 
     assert not hasattr(align_mod, "load_alignment")
 
@@ -305,9 +281,9 @@ def test_embedded_align_stage_imports_load_alignment_from_captions() -> None:
 
     assert captured, "embedded _ALIGN_STAGE does not import load_alignment"
     for module, _name in captured:
-        assert module == "media_pipeline.captions", (
+        assert module == "regrain.captions", (
             f"load_alignment imported from wrong module {module!r}; "
-            "it is defined in media_pipeline.captions, not media_pipeline.alignment"
+            "it is defined in regrain.captions, not regrain.alignment"
         )
 
 
@@ -319,7 +295,7 @@ def test_standalone_driver_starts_from_repo_root_and_gates_on_env() -> None:
     proc = subprocess.run(
         [sys.executable, "validation/speech_pipeline_e2e.py"],
         cwd=str(_REPO_ROOT),
-        env={k: v for k, v in os.environ.items() if not k.startswith("MEDIA_")},
+        env={k: v for k, v in os.environ.items() if not k.startswith("REGRAIN_")},
         capture_output=True,
         text=True,
     )

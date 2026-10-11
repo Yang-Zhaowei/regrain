@@ -11,8 +11,9 @@ checkpoints, private voice assets and episode directories separate. For example:
 ```text
 /srv/ai/src/regrain/                         development / experiment replay
 /srv/ai/apps/regrain/controllers/           versioned Controller environments
-  0.1.0-<source-sha>/                       candidate; keep accepted versions
-  current -> 0.1.0-<source-sha>/             optional, only after acceptance
+  0.1.0-<source-sha>/                       prior accepted version; preserve for rollback
+  0.2.0-<source-sha>/                       new breaking-change candidate
+  current -> 0.2.0-<source-sha>/             optional, only after owner acceptance
 /srv/ai/apps/media-pipeline/tts/.venv/       existing accepted TTS environment
 /srv/ai/apps/media-pipeline/aligner/.venv/   existing accepted alignment environment
 /srv/ai/models/speech/                      existing checkpoints
@@ -32,9 +33,9 @@ Python or per-Agent/per-content-project regrain installation is needed. Compare
 the hash with the matching manifest first; in PowerShell outside the checkout:
 
 ```powershell
-Get-FileHash ./regrain-0.1.0-py3-none-any.whl -Algorithm SHA256
+Get-FileHash ./regrain-0.2.0-py3-none-any.whl -Algorithm SHA256
 uv python install 3.12
-uv tool install --managed-python --python 3.12 --no-index ./regrain-0.1.0-py3-none-any.whl
+uv tool install --managed-python --python 3.12 --no-index ./regrain-0.2.0-py3-none-any.whl
 regrain --version
 regrain speech validate ./episode/speech.json
 ```
@@ -53,7 +54,7 @@ including examples, in a compatible Agent Skills discovery location. Codex and P
 can consume that same copy when configured to discover it; otherwise register its
 path with each host. The owner's Client uses `C:\Users\zhaowei\.agents\skills\regrain-speech`.
 Other hosts may use different paths. The wheel also ships this folder under
-`media_pipeline/skills/regrain-speech`. Confirm host discovery and validator access;
+`regrain/skills/regrain-speech`. Confirm host discovery and validator access;
 the [reported Client acceptance](validation/regrain-v0.1.0-owner-acceptance.md)
 does not prove all hosts' discovery mechanisms.
 
@@ -71,20 +72,23 @@ local configuration, not in speech.json.
 
 ## Owner-only Core candidate installation
 
-The owner performs these steps. They create a new Controller directory and do not
-modify accepted runtimes or the current installation. Replace the example variables:
+The owner performs these steps after reviewing the exact v0.2.0 artifact. They
+create a new Controller directory and do not modify the accepted v0.1.0 runtime,
+existing TTS/aligner environments, or model directories. The v0.2.0 naming
+migration is breaking; see the [migration guide](naming.md). Replace the example
+variables:
 
 ```sh
 set -eu
 artifact_dir=/path/to/reviewed/artifacts
 controller_root=/srv/ai/apps/regrain/controllers
-release_id=0.1.0-REPLACE_WITH_SOURCE_SHA
+release_id=0.2.0-REPLACE_WITH_SOURCE_SHA
 candidate="$controller_root/$release_id"
 # Compare this output with the reviewed manifest's wheel.sha256.
-sha256sum "$artifact_dir/regrain-0.1.0-py3-none-any.whl"
+sha256sum "$artifact_dir/regrain-0.2.0-py3-none-any.whl"
 test ! -e "$candidate"
 python3.12 -m venv "$candidate"
-"$candidate/bin/python" -m pip install --no-index --no-deps "$artifact_dir/regrain-0.1.0-py3-none-any.whl"
+"$candidate/bin/python" -m pip install --no-index --no-deps "$artifact_dir/regrain-0.2.0-py3-none-any.whl"
 unset PYTHONPATH PYTHONHOME
 "$candidate/bin/regrain" --version
 "$candidate/bin/regrain" speech validate /path/to/episode/speech.json
@@ -96,31 +100,35 @@ Stop on command failure and do not reuse an existing candidate directory.
 Use the accepted runtime paths and existing checkpoints, for example:
 
 ```sh
-export MEDIA_PIPELINE_TTS_PYTHON=/srv/ai/apps/media-pipeline/tts/.venv/bin/python
-export MEDIA_PIPELINE_ALIGNMENT_PYTHON=/srv/ai/apps/media-pipeline/aligner/.venv/bin/python
-export MEDIA_PIPELINE_ALIGNMENT_MODEL=/path/to/existing/Qwen3-ForcedAligner-0.6B
-unset MEDIA_ALIGNMENT_PYTHON MEDIA_ALIGNMENT_MODEL
+export REGRAIN_TTS_PYTHON=/srv/ai/apps/media-pipeline/tts/.venv/bin/python
+export REGRAIN_ALIGNMENT_PYTHON=/srv/ai/apps/media-pipeline/aligner/.venv/bin/python
+export REGRAIN_ALIGNMENT_MODEL=/path/to/existing/Qwen3-ForcedAligner-0.6B
 "$candidate/bin/regrain" speech render /path/to/clone-episode/speech.json \
   --tts-model /path/to/existing/Qwen3-TTS-12Hz-1.7B-Base \
-  --output /path/to/clone-episode/runs/0.1.0-candidate-clone
+  --output /path/to/clone-episode/runs/0.2.0-candidate-clone
 "$candidate/bin/regrain" speech render /path/to/custom-voice-episode/speech.json \
   --tts-model /path/to/existing/Qwen3-TTS-12Hz-1.7B-CustomVoice \
-  --output /path/to/custom-voice-episode/runs/0.1.0-candidate-custom
+  --output /path/to/custom-voice-episode/runs/0.2.0-candidate-custom
 ```
 
-The unset aliases above avoid the established legacy alignment precedence;
-explicit CLI paths also take precedence. Preserve the owner's desired local
-configuration rather than changing global environment files.
+For external audio, validate the prepared alignment request and run
+`regrain speech align request.json --output <new-run-dir>` with the alignment
+runtime options. To reuse successful units, import the prior run, create and
+review an assembly plan, then assemble into a new run directory. See the
+[production workflow guide](dev/speech-production.md) for command contracts.
+Preserve the owner's desired local configuration rather than changing global
+environment files.
 
-**Required GPU gate for the selected artifact:** both installed-CLI renders run
+**Required GPU gate for the selected artifact:** installed CLI workflows run
 on ai-core with the accepted separate interpreters and real assets/checkpoints.
-The [original owner acceptance](validation/regrain-v0.1.0-owner-acceptance.md)
-does not transfer to a rebuilt wheel. Record the wheel
-SHA256, source commit, runtime/model/asset identities, command, exit code and
-report. Check `complete`, every segment, one model load per stage, final WAV/SRT/
-timeline, voice identity, transitions, and human listening/subtitle sync. Use
-accepted short corpora; this gate does not solve Issue #8 or establish long-form
-stability. CPU/injected-worker tests cannot satisfy it.
+The [merged PR #17](https://github.com/Yang-Zhaowei/media-pipeline/pull/17) is
+the v0.1.0 predecessor; its original owner acceptance remains
+historical and does not transfer to the v0.2.0 wheel. Record the selected
+artifact SHA256, source commit, runtime/model/asset identities, commands, exit
+codes and reports. Check complete rendering, pause-only assembly without model
+calls, cross-run unit replacement, external-audio alignment, final WAV/SRT/
+timeline, input immutability, failure states and human listening/sync. CPU fakes
+cannot satisfy this gate.
 
 Only a complete render publishes `final/final.wav`, `final/final.srt` and
 `final/timeline.json`; retain `report.json` and the release manifest. Failed or
@@ -147,5 +155,6 @@ For an upgrade, create another version/source directory, install its wheel, and
 repeat the static and GPU gates before switching. Keep the previous environment,
 manifest and local configuration. Roll back by invoking the previous environment
 directly or switching the symlink back with the same two commands and its previous
-target. Rollback needs no PyTorch reinstall or model download. Existing outputs
-and runtime environments remain usable. Never edit code inside accepted installations.
+target. Rollback needs no PyTorch reinstall or model download. Existing outputs,
+model directories and worker environments remain usable. Never edit code inside
+accepted installations.

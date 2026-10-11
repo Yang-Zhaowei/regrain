@@ -15,17 +15,17 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline import (
+from regrain import (
     CustomVoiceError,
     CustomVoiceRequest,
     TTSRuntimeError,
     TTSArtifact,
 )
-from media_pipeline.tts import (
+from regrain.tts import (
     validate_request,
     waveform_to_mono_pcm16,
 )
-from media_pipeline.postprocess import read_wav, write_wav
+from regrain.postprocess import read_wav, write_wav
 
 _PCM16_MIN = -32_768
 _PCM16_MAX = 32_767
@@ -34,8 +34,8 @@ _PCM16_MAX = 32_767
 # --- portable boundary: importing the package must not load the runtime -----
 
 
-def test_importing_media_pipeline_does_not_pull_torch_or_qwen_or_soundfile() -> None:
-    # A fresh interpreter importing media_pipeline must not pull any heavy
+def test_importing_regrain_does_not_pull_torch_or_qwen_or_soundfile() -> None:
+    # A fresh interpreter importing regrain must not pull any heavy
     # runtime dependency, and must keep the runtime package un-imported. This
     # runs in a child interpreter via sys.executable so the result is
     # independent of the parent pytest process -- which may already have
@@ -47,11 +47,11 @@ def test_importing_media_pipeline_does_not_pull_torch_or_qwen_or_soundfile() -> 
     script = (
         "import sys\n"
         "sys.path.insert(0, %r)\n"
-        "import media_pipeline\n"
+        "import regrain\n"
         "loaded = [\n"
         "    m for m in (\n"
         "        'torch', 'qwen_tts', 'qwen_asr',\n"
-        "        'soundfile', 'media_pipeline.runtimes',\n"
+        "        'soundfile', 'regrain.runtimes',\n"
         "    ) if m in sys.modules\n"
         "]\n"
         "if loaded:\n"

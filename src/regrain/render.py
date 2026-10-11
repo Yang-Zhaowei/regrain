@@ -1,4 +1,4 @@
-"""Segmented speech rendering orchestration (v0).
+"""Segmented speech rendering orchestration and reusable Unit production.
 
 Public entry point :func:`render_speech` turns a *pre-segmented* script JSON
 into a complete episode mono 16-bit PCM WAV, a matching SRT and a verifiable
@@ -9,8 +9,8 @@ total timeline, reusing the four existing production stages:
 This module is the orchestration boundary between deterministic portable
 processing and the two host-specific GPU runtimes. It follows the segment
 assembly contract in :file:`docs/contracts/segmented-speech-v0.md` (C1-C9) and
-supports legacy CustomVoice speakers or a reusable Base clone asset. It adds
-no HTTP/MCP, long-text splitting, script revision, resume/cache, or loudness mastering.
+supports CustomVoice speakers or a reusable Base clone asset. Verified Unit
+snapshots enable independent revisions through :mod:`regrain.production`.
 
 Design boundaries enforced here:
 
@@ -35,7 +35,6 @@ import math
 import re
 import subprocess
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Callable
 
@@ -61,7 +60,14 @@ from .postprocess import (
     read_wav,
     write_wav,
 )
+from .audio_assembly import (
+    _CleanedSegment, assemble_audio, _publish, _half_up_frames,
+    _verify_caption_timeline, _verify_timeline_integrity, _caption_ms,
+    _verify_final_products,
+)
+
 from .tts import CustomVoiceRequest, TTSRuntimeError
+from .artifacts import create_unit, sha256_file
 
 __all__ = [
     "STATUS_COMPLETE",
@@ -74,15 +80,6 @@ __all__ = [
     "load_and_validate_script",
     "render_speech",
 ]
-
-#: Floating-point tolerance shared with the production stages for coarse
-#: second-value comparisons that are not frame-exact.
-_TIMING_TOLERANCE = 1e-6
-
-#: Millisecond budget an SRT boundary may deviate from the precise audio edge
-#: purely through ``ROUND_HALF_UP`` quantization. Used only for the audio
-#: boundary check, never to tolerate accumulated drift.
-_SRT_MS_TOLERANCE = 0.5
 
 # Absolute path to this installed package, resolved from this module. The
 # embedded model stages load this exact package without adding its parent to
@@ -112,17 +109,7 @@ _TOP_LEVEL_KEYS = frozenset({"language", "speaker", "voice", "instruct", "segmen
 _SEGMENT_KEYS = frozenset({"id", "text", "pause_after_ms", "instruct"})
 
 
-class RenderError(Exception):
-    """A preflight or run-level fault raises this.
-
-    Preflight faults (before any model starts) carry no ``run_dir``. Once a run
-    has started, ``run_dir`` points at the run directory holding the partial
-    artifacts and report so a caller can recover them.
-    """
-
-    def __init__(self, message: str, *, run_dir: Path | None = None) -> None:
-        super().__init__(message)
-        self.run_dir = run_dir
+from .errors import RenderError
 
 
 # --- request model ----------------------------------------------------------
@@ -668,6 +655,10 @@ def render_speech(
         # ``RenderError`` (with ``run_dir``) on any final-verification fault.
         return _assemble_and_publish(run_dir, script, safe_names, cleaned, report)
     except RenderError as exc:  # noqa: PERF203 - teardown then re-raise
+        try:
+            (run_dir / "final" / ".complete").unlink(missing_ok=True)
+        except OSError:
+            pass
         # An explicit run-level fault (TTS synthesis failure, sample-rate
         # mismatch, final-verification failure, ...) must not leave the report
         # as ``running``; record the failure best-effort and keep the partial
@@ -678,6 +669,10 @@ def render_speech(
             exc.run_dir = run_dir
         raise
     except Exception as exc:  # noqa: BLE001 - run-level, keep partial results
+        try:
+            (run_dir / "final" / ".complete").unlink(missing_ok=True)
+        except OSError:
+            pass
         report.status = STATUS_FAILED
         _write_report(run_dir, report)
         raise RenderError(f"run failed: {exc}", run_dir=run_dir) from exc
@@ -729,7 +724,7 @@ def _run_tts_stage(
             f"TTS stage runtime failure: {runtime_error}", run_dir=run_dir
         )
 
-    by_id = {entry["segment_id"]: entry for entry in results.get("segments", [])}
+    by_id = _index_stage_results(results, [seg["id"] for seg in segments], run_dir)
     for seg in segments:
         entry = by_id.get(seg["id"], {"status": "unknown"})
         if entry.get("status") != _SEG_OK:
@@ -742,6 +737,10 @@ def _run_tts_stage(
     # Per-segment deterministic verification of every freshly written WAV.
     for seg in segments:
         _verify_segment_wav(run_dir, safe_names[seg["id"]])
+        for entry in report.segments:
+            if entry["segment_id"] == seg["id"]:
+                entry["raw_audio_sha256"] = sha256_file(run_dir / "segments" / (safe_names[seg["id"]] + ".wav"))
+                break
 
 
 def _verify_segment_wav(run_dir: Path, safe_name: str) -> None:
@@ -806,7 +805,7 @@ def _run_alignment_stage(
             f"Alignment stage runtime failure: {runtime_error}", run_dir=run_dir
         )
 
-    by_id = {entry["segment_id"]: entry for entry in results.get("segments", [])}
+    by_id = _index_stage_results(results, [seg["id"] for seg in segments], run_dir)
     failed: list[str] = []
     for seg in segments:
         entry = by_id.get(seg["id"], {"status": "unknown"})
@@ -837,17 +836,16 @@ def _run_alignment_stage(
 # --- pure stage: postprocess + captions (CPU, one segment at a time) --------
 
 
-@dataclass(frozen=True)
-class _CleanedSegment:
-    """A segment that passed every stage and can participate in assembly."""
-
-    segment_id: str
-    safe_name: str
-    samples: list[int]
-    sample_rate: int
-    frames: int
-    pause_after_ms: int
-    local_captions: list[Caption]
+def _index_stage_results(results: dict, expected_ids: list[str], run_dir: Path) -> dict:
+    entries = results.get("segments", [])
+    if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+        raise RenderError("model stage returned malformed segment results", run_dir=run_dir)
+    identities = [entry.get("segment_id") for entry in entries]
+    if any(not isinstance(identity, str) for identity in identities):
+        raise RenderError("model stage returned invalid segment IDs", run_dir=run_dir)
+    if len(set(identities)) != len(identities) or set(identities) != set(expected_ids):
+        raise RenderError("model stage returned duplicate, missing or unexpected segment results", run_dir=run_dir)
+    return {entry["segment_id"]: entry for entry in entries}
 
 
 def _run_postprocess_stage(
@@ -878,6 +876,11 @@ def _run_postprocess_stage(
         raw_alignment = run_dir / "segments" / (safe_name + ".alignment.raw.json")
         cleaned_wav = run_dir / "segments" / (safe_name + ".cleaned.wav")
         adjusted_alignment = run_dir / "segments" / (safe_name + ".alignment.adjusted.json")
+        expected_raw_hash = next(entry["raw_audio_sha256"] for entry in report.segments
+                                 if entry["segment_id"] == segment_id)
+        if sha256_file(raw_wav) != expected_raw_hash:
+            raise RenderError(f"alignment stage changed immutable TTS audio: {segment_id}", run_dir=run_dir)
+        raw_alignment_hash = sha256_file(raw_alignment)
 
         try:
             postprocess_speech(
@@ -922,7 +925,30 @@ def _run_postprocess_stage(
             )
             continue
 
-        samples, sample_rate, frames = read_wav(cleaned_wav)
+        unit = create_unit(
+            run_dir / "units" / safe_name,
+            audio_path=cleaned_wav,
+            alignment_path=adjusted_alignment,
+            text=seg["text"], language=script.language,
+            provenance={
+                "workflow": "render", "segment_id": segment_id,
+                "raw_audio_sha256": expected_raw_hash,
+                "raw_alignment_sha256": raw_alignment_hash,
+                "processing": "trim_and_fade_v1",
+                "voice": _voice_fields(script),
+                "effective_instruct": seg["effective_instruct"],
+            },
+        )
+        if sha256_file(raw_wav) != expected_raw_hash or sha256_file(raw_alignment) != raw_alignment_hash:
+            (unit.manifest_path.parent / ".complete").unlink(missing_ok=True)
+            raise RenderError(f"immutable raw inputs changed during processing: {segment_id}", run_dir=run_dir)
+        samples, sample_rate, frames = unit.samples, unit.sample_rate, unit.frames
+        local_captions = unit.local_captions
+        for entry in report.segments:
+            if entry["segment_id"] == segment_id:
+                entry["unit_manifest"] = unit.manifest_path.relative_to(run_dir).as_posix()
+                entry["unit_sha256"] = unit.manifest_sha256
+                break
         cleaned.append(
             _CleanedSegment(
                 segment_id=segment_id,
@@ -978,112 +1004,7 @@ def _assemble_and_publish(
             completed_stages=list(report.completed_stages),
         )
 
-    # --- integer-frame accumulation (C7) ------------------------------------
-    common_rate = cleaned[0].sample_rate
-    for seg in cleaned:
-        if seg.sample_rate != common_rate:
-            raise RenderError(
-                f"sample rate mismatch during assembly: "
-                f"{seg.segment_id} has {seg.sample_rate} Hz != {common_rate} Hz",
-                run_dir=run_dir,
-            )
-
-    # Local caption text comes from each segment's own original text; never
-    # recombined across input segments.
-    original_text = {seg.id: seg.text for seg in script.segments}
-
-    total_frames = 0
-    all_samples: list[int] = []
-    global_captions: list[Caption] = []
-    timeline_segments: list[dict] = []
-    running = 0  # O_i: cumulative frames before this segment
-
-    for seg in cleaned:
-        n_i = seg.frames
-        g_i = _half_up_frames(seg.pause_after_ms, common_rate)
-        offset_frames = running  # O_i
-
-        for caption in seg.local_captions:
-            global_captions.append(
-                Caption(
-                    start=caption.start + offset_frames / common_rate,
-                    end=caption.end + offset_frames / common_rate,
-                    text=caption.text,
-                )
-            )
-
-        all_samples.extend(seg.samples)
-        all_samples.extend([0] * g_i)
-        running += n_i + g_i
-
-        timeline_segments.append(
-            {
-                "segment_id": seg.segment_id,
-                "start_frame": offset_frames,
-                "audio_frames": n_i,
-                "pause_after_frames": g_i,
-            }
-        )
-
-    total_frames = running
-
-    # --- verify the caption timeline before writing anything ----------------
-    _verify_caption_timeline(global_captions, total_frames, common_rate, run_dir)
-
-    # --- verify the integer-frame timeline integrity (C7) -------------------
-    _verify_timeline_integrity(
-        timeline_segments,
-        [seg.segment_id for seg in cleaned],
-        total_frames,
-        run_dir,
-    )
-
-    # --- render SRT (only at the very end, existing half-up rules) ----------
-    srt_text = render_srt(global_captions)
-
-    # --- generate final products in a staging dir, then re-read & validate --
-    staging = run_dir / ".final.staging"
-    staging.mkdir(parents=True, exist_ok=True)
-    final_wav = staging / "final.wav"
-    final_srt = staging / "final.srt"
-    final_timeline = staging / "timeline.json"
-
-    write_wav(final_wav, all_samples, common_rate)
-    final_srt.write_text(srt_text, encoding="utf-8", newline="\n")
-    final_timeline.write_text(
-        json.dumps(
-            {
-                "sample_rate": common_rate,
-                "total_frames": total_frames,
-                "start_seconds": 0.0,
-                "duration_seconds": total_frames / common_rate,
-                "segments": timeline_segments,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    _verify_final_products(
-        staging,
-        common_rate,
-        total_frames,
-        global_captions,
-        [seg.segment_id for seg in cleaned],
-    )
-
-    # --- publish final/ products, then complete the run transaction (C6) ---
-    # Order is a transaction: publish the artifacts, write the ``complete``
-    # report successfully, and only then write the ``.complete`` marker last.
-    # A failure at any step leaves no ``.complete`` marker, so a consumer never
-    # treats a failed publish/report/marker write as success.
-    final_dir = run_dir / "final"
-    final_dir.mkdir(parents=True, exist_ok=True)
-    _publish(final_wav, final_dir / "final.wav")
-    _publish(final_srt, final_dir / "final.srt")
-    _publish(final_timeline, final_dir / "timeline.json")
+    final_dir = assemble_audio(cleaned, run_dir, publish=_publish)
 
     report.status = STATUS_COMPLETE
     report.completed_stages.append("assemble")
@@ -1111,205 +1032,6 @@ def _assemble_and_publish(
         config=report.config,
         completed_stages=list(report.completed_stages),
     )
-
-
-def _publish(source: Path, destination: Path) -> None:
-    """Copy a staged final product into ``final/``."""
-
-    destination.write_bytes(source.read_bytes())
-
-
-# --- timeline helpers -------------------------------------------------------
-
-
-def _half_up_frames(pause_after_ms: int, sample_rate: int) -> int:
-    """Number of silence frames inserted after a segment (half-up)."""
-
-    return int((Decimal(str(pause_after_ms)) * sample_rate / Decimal(1000)).quantize(
-        Decimal("1"), rounding=ROUND_HALF_UP
-    ))
-
-
-def _verify_caption_timeline(
-    captions: list[Caption], total_frames: int, sample_rate: int, run_dir: Path
-) -> None:
-    """Validate the whole-episode caption timeline before writing.
-
-    Consecutive, non-empty, start before end, non-negative, non-overlapping
-    (touching allowed). Millisecond quantization causing a zero-duration caption
-    is an explicit failure. Every emitted boundary must fall inside the final
-    WAV, allowing the 0.5 ms SRT rounding tolerance against the precise audio
-    edge -- but never accumulated drift.
-    """
-
-    if not captions:
-        raise RenderError("assembly produced no captions", run_dir=run_dir)
-
-    final_duration = total_frames / sample_rate
-    previous_end = -1.0
-    for index, caption in enumerate(captions):
-        if not caption.text:
-            raise RenderError(
-                f"caption {index + 1} has empty text after assembly", run_dir=run_dir
-            )
-        if caption.start < 0 or caption.end < 0:
-            raise RenderError(
-                f"caption {index + 1} has negative timing", run_dir=run_dir
-            )
-        if not (caption.start < caption.end):
-            raise RenderError(
-                f"caption {index + 1} has start >= end", run_dir=run_dir
-            )
-        # Zero duration from millisecond quantization is an explicit failure.
-        start_ms = _caption_ms(caption.start)
-        end_ms = _caption_ms(caption.end)
-        if end_ms - start_ms <= 0:
-            raise RenderError(
-                f"caption {index + 1} has zero or negative duration after "
-                f"millisecond quantization",
-                run_dir=run_dir,
-            )
-        if caption.start < previous_end - _TIMING_TOLERANCE:
-            raise RenderError(
-                f"caption {index + 1} overlaps the previous caption", run_dir=run_dir
-            )
-        previous_end = caption.end
-        emitted_end_ms = end_ms
-        if emitted_end_ms > final_duration * 1000 + _SRT_MS_TOLERANCE + 1e-6:
-            raise RenderError(
-                f"caption {index + 1} ends at {emitted_end_ms} ms, past the final "
-                f"WAV duration {final_duration * 1000} ms",
-                run_dir=run_dir,
-            )
-
-
-def _verify_timeline_integrity(
-    timeline_segments: object,
-    segment_ids: list[str],
-    total_frames: int,
-    run_dir: Path,
-) -> None:
-    """Verify the integer-frame timeline accumulation against the source of truth (C7).
-
-    ``segment_ids`` is the ordered list of input segment ids; ``timeline_segments``
-    is the ``segments`` array from ``timeline.json``. Each entry must carry the
-    four required integer fields, appear in the input order, and have a
-    ``start_frame`` equal to the cumulative ``audio_frames + pause_after_frames``
-    of the preceding segments. The accumulated total must equal ``total_frames``.
-    """
-
-    if not isinstance(timeline_segments, list):
-        raise RenderError(
-            "timeline is missing its per-segment entries", run_dir=run_dir
-        )
-    if len(timeline_segments) != len(segment_ids):
-        raise RenderError(
-            "timeline segment count does not match the input segments",
-            run_dir=run_dir,
-        )
-    running = 0
-    for entry, expected_id in zip(timeline_segments, segment_ids):
-        for key in ("segment_id", "start_frame", "audio_frames", "pause_after_frames"):
-            if key not in entry:
-                raise RenderError(
-                    f"timeline segment entry missing {key!r}", run_dir=run_dir
-                )
-        for key in ("start_frame", "audio_frames", "pause_after_frames"):
-            # ``bool`` is an ``int`` subclass; reject it so a frame count can
-            # never be silently stored as ``True``/``False``.
-            if not isinstance(entry[key], int) or isinstance(entry[key], bool):
-                raise RenderError(
-                    f"timeline {key} must be an integer frame count",
-                    run_dir=run_dir,
-                )
-        if entry["segment_id"] != expected_id:
-            raise RenderError(
-                "timeline segment order does not match the input segments",
-                run_dir=run_dir,
-            )
-        if entry["start_frame"] != running:
-            raise RenderError(
-                f"timeline segment {expected_id!r} start_frame "
-                f"{entry['start_frame']} does not match the accumulated "
-                f"{running} (integer-frame offset)",
-                run_dir=run_dir,
-            )
-        running += entry["audio_frames"] + entry["pause_after_frames"]
-    if running != total_frames:
-        raise RenderError(
-            f"timeline total_frames {total_frames} does not match the "
-            f"accumulated {running}",
-            run_dir=run_dir,
-        )
-
-
-def _caption_ms(seconds: float) -> int:
-    """Render seconds to an SRT millisecond integer (independent of the renderer)."""
-
-    return int((Decimal(str(seconds)) * 1000).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-
-
-def _verify_final_products(
-    final_dir: Path,
-    sample_rate: int,
-    total_frames: int,
-    captions: list[Caption],
-    segment_ids: list[str],
-) -> None:
-    """Re-read the published final WAV/SRT/timeline and verify them against disk."""
-
-    # --- WAV: frame count / rate / format ---
-    samples, rate, frames = read_wav(final_dir / "final.wav")
-    if rate != sample_rate or frames != total_frames or len(samples) != frames:
-        raise RenderError(
-            "final WAV re-read mismatch: "
-            f"rate={rate}, frames={frames}, expected {sample_rate}/{total_frames}",
-            run_dir=final_dir.parent,
-        )
-
-    # --- SRT: actual file content must equal the rendered document ---
-    srt_text = (final_dir / "final.srt").read_text(encoding="utf-8")
-    if srt_text != render_srt(captions):
-        raise RenderError(
-            "final SRT re-read content does not match the compiled captions",
-            run_dir=final_dir.parent,
-        )
-
-    # --- timeline: re-read and confirm the derived integers ---
-    try:
-        timeline = json.loads((final_dir / "timeline.json").read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise RenderError(f"cannot re-read timeline: {exc}", run_dir=final_dir.parent) from exc
-
-    if timeline.get("sample_rate") != sample_rate:
-        raise RenderError(
-            "timeline sample_rate does not match the common WAV rate",
-            run_dir=final_dir.parent,
-        )
-    if timeline.get("total_frames") != total_frames:
-        raise RenderError(
-            "timeline total_frames does not match the assembled frame count",
-            run_dir=final_dir.parent,
-        )
-    timeline_segments = timeline.get("segments")
-    # Re-verify the integer-frame accumulation against the re-read file (C7).
-    _verify_timeline_integrity(
-        timeline_segments, segment_ids, total_frames, final_dir.parent
-    )
-    # Second values, if present, must be derived from the integer frames, never
-    # from independently rounded millisecond accumulations.
-    if "duration_seconds" in timeline:
-        expected_duration = total_frames / sample_rate
-        if abs(timeline["duration_seconds"] - expected_duration) > _TIMING_TOLERANCE:
-            raise RenderError(
-                "timeline duration_seconds is not derived from integer frames",
-                run_dir=final_dir.parent,
-            )
-    if "start_seconds" in timeline and timeline["start_seconds"] != 0.0:
-        raise RenderError(
-            "timeline start_seconds is not zero",
-            run_dir=final_dir.parent,
-        )
 
 
 # --- model stage subprocess construction ------------------------------------
@@ -1363,7 +1085,7 @@ def _run_model_stage(
     The model stage is launched exactly once per run. The stage writes the
     per-segment result manifest itself; the parent only reads it.
 
-    The child bootstraps this exact ``media_pipeline`` package by file location
+    The child bootstraps this exact ``regrain`` package by file location
     (C4/C8), regardless of whether the interpreter's venv has another copy
     installed. Its environment and dependency search paths remain the worker's.
 
@@ -1392,11 +1114,11 @@ def _run_model_stage(
             "import importlib.util, pathlib, sys\n"
             f"_package_dir = pathlib.Path({str(_PACKAGE_DIR)!r})\n"
             "_spec = importlib.util.spec_from_file_location(\n"
-            "    'media_pipeline', _package_dir / '__init__.py',\n"
+            "    'regrain', _package_dir / '__init__.py',\n"
             "    submodule_search_locations=[str(_package_dir)],\n"
             ")\n"
             "_package = importlib.util.module_from_spec(_spec)\n"
-            "sys.modules['media_pipeline'] = _package\n"
+            "sys.modules['regrain'] = _package\n"
             "_spec.loader.exec_module(_package)\n"
             + stage_script
         )
@@ -1409,16 +1131,19 @@ def _run_model_stage(
         # Read the structured manifest the child wrote, regardless of exit code.
         _load_stage_manifest(manifest_file, result_manifest)
 
-        # Only when no usable structured result was produced do we fall back to
-        # the exit code / stderr. A non-zero exit with an empty manifest is a
-        # run-level fault, never an isolatable segment failure.
+        # A nonzero child exit is always a runtime fault, even if it wrote
+        # successful segment records first. Preserve the records for recovery.
         if (
             completed.returncode != 0
-            and not result_manifest["segments"]
             and not result_manifest["runtime_error"]
         ):
+            reasons = [f"{entry.get('segment_id')!r}: {entry.get('reason')}"
+                       for entry in result_manifest["segments"]
+                       if isinstance(entry, dict) and entry.get("reason")]
             result_manifest["runtime_error"] = (
                 f"stage failed (exit {completed.returncode}):\n"
+                + ("segment failures: " + "; ".join(reasons) + "\n" if reasons else "")
+                +
                 f"stderr: {completed.stderr}"
             )
 
@@ -1475,9 +1200,9 @@ try:
 
     model_path, task_dict = _task[0], _task[1]
 
-    from media_pipeline import CustomVoiceRequest
-    from media_pipeline.postprocess import read_wav
-    from media_pipeline.tts import TTSRuntimeError
+    from regrain import CustomVoiceRequest
+    from regrain.postprocess import read_wav
+    from regrain.tts import TTSRuntimeError
 
     segments_dir = Path(task_dict["run_dir"]) / "segments"
     segments_dir.mkdir(parents=True, exist_ok=True)
@@ -1486,16 +1211,16 @@ try:
     synthesis_errors = (TTSRuntimeError, OSError)
     try:
         if clone is not None:
-            from media_pipeline.voice_clone import VoiceAssetError, VoiceCloneError, VoiceCloneRequest
-            from media_pipeline.render import _resolve_clone_asset
-            from media_pipeline.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, load_voice_asset
+            from regrain.voice_clone import VoiceAssetError, VoiceCloneError, VoiceCloneRequest
+            from regrain.render import _resolve_clone_asset
+            from regrain.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, load_voice_asset
 
             synthesis_errors += (VoiceAssetError, VoiceCloneError)
             asset_path = _resolve_clone_asset(clone["asset"], Path(task_dict["script_dir"]))
             asset = load_voice_asset(asset_path)
             engine = Qwen3VoiceCloneTTS(model_path, device=task_dict.get("device", "cuda:0"))
         else:
-            from media_pipeline.runtimes.qwen_tts import Qwen3CustomVoiceTTS
+            from regrain.runtimes.qwen_tts import Qwen3CustomVoiceTTS
             engine = Qwen3CustomVoiceTTS(model_path, device=task_dict.get("device", "cuda:0"))
     except Exception as exc:
         context = "failed to initialize clone TTS" if clone is not None else "failed to load TTS model"
@@ -1575,17 +1300,17 @@ try:
 
     model_path, task_dict = _task[0], _task[1]
 
-    from media_pipeline.alignment import (
+    from regrain.alignment import (
         AlignmentRequest,
         AlignmentRequestError,
         AlignmentRuntimeError,
         fault_is_io_error,
     )
-    from media_pipeline.captions import (
+    from regrain.captions import (
         AlignmentError,
         AlignmentMismatchError,
     )
-    from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+    from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
 
     # Per-segment deterministic validation failures (malformed output, text
     # mismatch, input-WAV format error) are isolatable; model-runtime faults and

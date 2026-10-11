@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline import cli, render
-from media_pipeline.render import RenderError, RenderResult, SegmentResult
+from regrain import cli, render
+from regrain.render import RenderError, RenderResult, SegmentResult
 from test_render import FakeAlignerEngine, FakeTTSEngine
 
 
@@ -30,6 +30,7 @@ def _clear_runtime_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(FakeTTSEngine, "loads", 0)
     monkeypatch.setattr(FakeAlignerEngine, "loads", 0)
     for key in _RUNTIME:
+        monkeypatch.delenv("REGRAIN_" + key.upper(), raising=False)
         monkeypatch.delenv("MEDIA_PIPELINE_" + key.upper(), raising=False)
     for key in ("MEDIA_ALIGNMENT_PYTHON", "MEDIA_ALIGNMENT_MODEL"):
         monkeypatch.delenv(key, raising=False)
@@ -74,7 +75,7 @@ def _no_call(*args: object, **kwargs: object) -> None:
 
 def _set_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in _RUNTIME.items():
-        monkeypatch.setenv("MEDIA_PIPELINE_" + key.upper(), value)
+        monkeypatch.setenv("REGRAIN_" + key.upper(), value)
 
 
 def _complete(run_dir: Path) -> RenderResult:
@@ -120,7 +121,7 @@ def test_help_is_human_readable_and_does_not_preflight(argv, capsys, monkeypatch
 
 
 def test_version_identifies_package_without_preflight(capsys, monkeypatch) -> None:
-    from media_pipeline import __version__
+    from regrain import __version__
 
     monkeypatch.setattr(cli, "load_and_validate_script", _no_call)
     with pytest.raises(SystemExit) as excinfo:
@@ -347,21 +348,38 @@ def test_missing_runtime_is_usage_error_after_successful_preflight(tmp_path, cap
     assert payload["command"] == "render"
     assert payload["status"] == "error"
     for key in _RUNTIME:
-        assert "MEDIA_PIPELINE_" + key.upper() in payload["error"]
+        assert "REGRAIN_" + key.upper() in payload["error"]
     assert list(tmp_path.iterdir()) == [script]
 
 
-@pytest.mark.parametrize("mode", ["env", "aliases", "overrides"])
+@pytest.mark.parametrize("prefix", ["MEDIA_PIPELINE_", "MEDIA_"])
+def test_legacy_runtime_environment_does_not_configure_render(
+    tmp_path, capsys, monkeypatch, prefix,
+) -> None:
+    script = _write_script(tmp_path)
+    for key, value in _RUNTIME.items():
+        monkeypatch.setenv(prefix + key.upper(), value)
+    monkeypatch.setattr(cli, "render_speech", _no_call)
+    code, payload = _invoke(
+        capsys, ["speech", "render", str(script), "--output", str(tmp_path / "run")],
+    )
+    assert code == 2
+    assert payload["status"] == "error"
+    assert "REGRAIN_ALIGNMENT_PYTHON" in payload["error"]
+    assert "REGRAIN_TTS_PYTHON" in payload["error"]
+    assert not (tmp_path / "run").exists()
+
+
+@pytest.mark.parametrize("mode", ["env", "overrides"])
 def test_runtime_resolution_and_exact_render_delegation(tmp_path, capsys, monkeypatch, mode) -> None:
     script = _write_script(tmp_path)
     run_dir = tmp_path / "run"
     _set_runtime(monkeypatch)
+    for key in _RUNTIME:
+        monkeypatch.setenv("MEDIA_PIPELINE_" + key.upper(), "old pipeline " + key)
+        monkeypatch.setenv("MEDIA_" + key.upper(), "old short " + key)
     expected = dict(_RUNTIME)
     extra = []
-    if mode in {"aliases", "overrides"}:
-        for key in ("alignment_python", "alignment_model"):
-            monkeypatch.setenv("MEDIA_" + key.upper(), "legacy " + key)
-            expected[key] = "legacy " + key
     if mode == "overrides":
         expected = {key: "explicit " + key for key in _RUNTIME}
         for key, value in expected.items():
@@ -441,14 +459,14 @@ def test_empty_runtime_slots_are_rejected(tmp_path, capsys, monkeypatch, value, 
     _set_runtime(monkeypatch)
     extra = []
     if source == "env":
-        monkeypatch.setenv("MEDIA_PIPELINE_TTS_PYTHON", value)
+        monkeypatch.setenv("REGRAIN_TTS_PYTHON", value)
     else:
         extra = ["--tts-python", value]
     monkeypatch.setattr(cli, "render_speech", _no_call)
     code, payload = _invoke(capsys, ["speech", "render", str(script), "--output", str(tmp_path / "run"), *extra])
     assert code == 2
     assert payload["status"] == "error"
-    assert "MEDIA_PIPELINE_TTS_PYTHON" in payload["error"]
+    assert "REGRAIN_TTS_PYTHON" in payload["error"]
     assert not (tmp_path / "run").exists()
 
 
@@ -573,14 +591,14 @@ import importlib.abc
 import sys
 class NoModels(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'torch', 'qwen_tts', 'qwen_asr'} or fullname.startswith('media_pipeline.runtimes'):
+        if fullname.split('.')[0] in {'torch', 'qwen_tts', 'qwen_asr'} or fullname.startswith('regrain.runtimes'):
             raise AssertionError('model import during static validation: ' + fullname)
 sys.meta_path.insert(0, NoModels())
-from media_pipeline.cli import main
+from regrain.cli import main
 raise SystemExit(main(sys.argv[1:]))
 """
     before = script.read_bytes()
-    for args in (["-m", "media_pipeline.cli"], ["-c", guard]):
+    for args in (["-m", "regrain"], ["-m", "regrain.cli"], ["-c", guard]):
         completed = subprocess.run(
             [sys.executable, *args, "speech", "validate", str(script)],
             env=_subprocess_env(), capture_output=True, check=False,
@@ -599,7 +617,7 @@ def test_escaped_surrogate_json_still_produces_valid_utf8_output(tmp_path) -> No
     # JSON permits escaped surrogates, even though they cannot be emitted as UTF-8 bytes.
     script.write_text(json.dumps({"language": "Chinese", "speaker": "Uncle_Fu", "segments": [{"id": "unit", "text": "A\ud800"}]}), encoding="utf-8")
     completed = subprocess.run(
-        [sys.executable, "-m", "media_pipeline.cli", "speech", "validate", str(script)],
+        [sys.executable, "-m", "regrain.cli", "speech", "validate", str(script)],
         env=_subprocess_env(), capture_output=True, check=False,
     )
     assert completed.returncode == 0
@@ -607,16 +625,16 @@ def test_escaped_surrogate_json_still_produces_valid_utf8_output(tmp_path) -> No
     assert json.loads(completed.stdout.decode("utf-8"))["plan"]["segments"][0]["text"] == "A\ud800"
 
 
-def test_standard_console_entrypoint_and_legacy_module_help() -> None:
+def test_standard_console_entrypoint_and_unified_module_help() -> None:
     metadata = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'regrain = "media_pipeline.cli:main"' in metadata
-    assert 'media-pipeline = "media_pipeline.cli:main"' in metadata
+    assert 'regrain = "regrain.cli:main"' in metadata
+    assert 'media-pipeline =' not in metadata
     completed = subprocess.run(
-        [sys.executable, "-m", "media_pipeline", "--help"],
+        [sys.executable, "-m", "regrain", "--help"],
         env={**_subprocess_env(), "PYTHONIOENCODING": "utf-8"}, capture_output=True, check=False,
     )
     assert completed.returncode == 0
     assert completed.stderr == b""
     help_text = completed.stdout.decode("utf-8")
-    assert "Compile original text and forced alignment into SRT captions." in help_text
-    assert "text alignment" in help_text
+    assert "speech" in help_text
+    assert "usage: regrain" in help_text

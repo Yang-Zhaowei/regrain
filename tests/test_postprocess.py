@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from media_pipeline.postprocess import (
+from regrain.postprocess import (
     DEFAULT_FADE_IN,
     DEFAULT_FADE_OUT,
     DEFAULT_POST_PADDING,
@@ -25,7 +25,7 @@ from media_pipeline.postprocess import (
 )
 
 def _tokens(*entries: tuple[str, float, float]) -> list:
-    from media_pipeline.captions import parse_alignment
+    from regrain.captions import parse_alignment
 
     return parse_alignment(
         [{"text": text, "start": start, "end": end} for text, start, end in entries]

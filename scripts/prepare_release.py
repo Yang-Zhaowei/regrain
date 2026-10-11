@@ -34,7 +34,7 @@ def clean_revision() -> str:
 
 
 def source_version() -> str:
-    tree = ast.parse((ROOT / "src/media_pipeline/__init__.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "src/regrain/__init__.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == "__version__"

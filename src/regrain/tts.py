@@ -5,11 +5,11 @@ This module holds the *portable* side of the Speech Pipeline's TTS stage:
 - the request/output contracts,
 - request validation,
 - a flat-mono waveform-to-16-bit-PCM conversion,
-- WAV I/O helpers (owned by :mod:`media_pipeline.postprocess`).
+- WAV I/O helpers (owned by :mod:`regrain.postprocess`).
 
 It is pure Python. It neither imports ``torch``, ``qwen_tts``, ``soundfile``,
 nor any CUDA binding at import time or at use time. The model/runtime adapter
-lives in :mod:`media_pipeline.runtimes.qwen_tts`, which is imported lazily.
+lives in :mod:`regrain.runtimes.qwen_tts`, which is imported lazily.
 
 Scope contract (v0):
 

@@ -18,13 +18,13 @@ credentials -- everything comes from environment variables.
 
 Required environment variables:
 
-- ``MEDIA_PIPELINE_TTS_MODEL`` -- Qwen3-TTS CustomVoice model path;
-- ``MEDIA_ALIGNMENT_MODEL`` or ``MEDIA_PIPELINE_ALIGNMENT_MODEL`` -- Qwen3
+- ``REGRAIN_TTS_MODEL`` -- Qwen3-TTS CustomVoice model path;
+- ``REGRAIN_ALIGNMENT_MODEL`` -- Qwen3
   ForcedAligner model path;
-- ``MEDIA_PIPELINE_TTS_PYTHON`` -- interpreter of the TTS environment;
-- ``MEDIA_ALIGNMENT_PYTHON`` or ``MEDIA_PIPELINE_ALIGNMENT_PYTHON`` --
+- ``REGRAIN_TTS_PYTHON`` -- interpreter of the TTS environment;
+- ``REGRAIN_ALIGNMENT_PYTHON`` --
   interpreter of the Alignment environment;
-- ``MEDIA_PIPELINE_E2E_RUN_DIR`` -- a fresh directory for the run artifacts.
+- ``REGRAIN_E2E_RUN_DIR`` -- a fresh directory for the run artifacts.
 
 On success it prints an audit summary (commit SHA, versions, GPU, model paths,
 output directory, artifact sizes, WAV metadata, trim frame range, token and
@@ -47,7 +47,7 @@ _SRC = _REPO_ROOT / "src"
 
 # Add the repo ``src`` and ``tests`` directories *before* importing the portable
 # validation harness (:mod:`e2e_validation` lives in ``tests/``) so this driver
-# runs the current checkout instead of any installed ``media_pipeline``.
+# runs the current checkout instead of any installed ``regrain``.
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 if str(_REPO_ROOT / "tests") not in sys.path:
@@ -66,23 +66,6 @@ def _require(name: str) -> str:
     if not value:
         raise SystemExit(f"missing required environment variable: {name}")
     return value
-
-
-def _require_alias(*names: str) -> str:
-    """Return the first set environment variable in ``names``.
-
-    A true alias resolver: unlike ``_require(...) or _require(...)`` (which
-    exits when the first name is missing), this keeps looking across every
-    alias so the documented aliases are all honoured and none is dead code.
-    """
-
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return value
-    raise SystemExit(
-        "missing required environment variable (any of): " + ", ".join(names)
-    )
 
 
 def _run_stage(python: str, script: Path, *argv: str) -> None:
@@ -105,8 +88,8 @@ import json
 import sys
 from pathlib import Path
 
-from media_pipeline import CustomVoiceRequest
-from media_pipeline.runtimes.qwen_tts import Qwen3CustomVoiceTTS
+from regrain import CustomVoiceRequest
+from regrain.runtimes.qwen_tts import Qwen3CustomVoiceTTS
 
 model_path, out_wav, request = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
 engine = Qwen3CustomVoiceTTS(model_path)
@@ -126,9 +109,9 @@ import json
 import sys
 from pathlib import Path
 
-from media_pipeline.alignment import AlignmentRequest, validate_wav
-from media_pipeline.captions import load_alignment
-from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+from regrain.alignment import AlignmentRequest, validate_wav
+from regrain.captions import load_alignment
+from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
 
 model_path, out_align, wav, request = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
 engine = Qwen3ForcedAlignment(model_path)
@@ -178,18 +161,18 @@ def _report(artifacts: E2EArtifacts, run_dir: Path, config: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    run_dir = Path(_require("MEDIA_PIPELINE_E2E_RUN_DIR"))
+    run_dir = Path(_require("REGRAIN_E2E_RUN_DIR"))
     run_dir.mkdir(parents=True, exist_ok=False)
 
-    instruct = os.environ.get("MEDIA_PIPELINE_SPEECH_INSTRUCT", _DEFAULT_INSTRUCT)
+    instruct = os.environ.get("REGRAIN_SPEECH_INSTRUCT", _DEFAULT_INSTRUCT)
     text = (
         _REPO_ROOT / "tests" / "fixtures" / "speech-smoke-001" / "original.txt"
     ).read_text(encoding="utf-8")
 
-    tts_python = _require("MEDIA_PIPELINE_TTS_PYTHON")
-    align_python = _require_alias("MEDIA_ALIGNMENT_PYTHON", "MEDIA_PIPELINE_ALIGNMENT_PYTHON")
-    tts_model = _require("MEDIA_PIPELINE_TTS_MODEL")
-    align_model = _require_alias("MEDIA_ALIGNMENT_MODEL", "MEDIA_PIPELINE_ALIGNMENT_MODEL")
+    tts_python = _require("REGRAIN_TTS_PYTHON")
+    align_python = _require("REGRAIN_ALIGNMENT_PYTHON")
+    tts_model = _require("REGRAIN_TTS_MODEL")
+    align_model = _require("REGRAIN_ALIGNMENT_MODEL")
 
     # Exact-head guard: run *after* environment-gating so a run that never
     # configured the GPU stages still fails on the documented missing-variable
@@ -274,8 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("raw.wav changed after the Alignment stage")
 
     # --- Process 3: portable postprocess + captions + validate --------------
-    from media_pipeline.captions import build_captions, compile_srt, load_alignment
-    from media_pipeline.postprocess import postprocess_speech
+    from regrain.captions import build_captions, compile_srt, load_alignment
+    from regrain.postprocess import postprocess_speech
 
     final_wav_path = run_dir / "final.wav"
     adjusted_alignment_path = run_dir / "adjusted.json"

@@ -9,7 +9,7 @@ stage:
 
 It is pure Python. It neither imports ``torch``, ``qwen_asr``, nor any CUDA
 binding at import time or at use time. The model/runtime adapter lives in
-:mod:`media_pipeline.runtimes.qwen_aligner`, which is imported lazily.
+:mod:`regrain.runtimes.qwen_aligner`, which is imported lazily.
 
 Scope contract (v0):
 
@@ -17,7 +17,7 @@ Scope contract (v0):
   does not split long text; the caller passes a single utterance.
 - The runtime returns one flat list of ``{"text", "start_time", "end_time"}``
   records for that utterance. This module maps those into the shared
-  :class:`~media_pipeline.captions.AlignedToken` representation and validates
+  :class:`~regrain.captions.AlignedToken` representation and validates
   them, but never sorts, rounds, truncates, repairs, adds to, or removes from
   the alignment content.
 - The output JSON keeps the existing ``{"text", "start", "end"}`` shape that the
@@ -26,12 +26,12 @@ Scope contract (v0):
 - No model, host, or output path is hard-coded here.
 
 Matching the aligned token text against the original request text is a
-behavior shared with the Caption Compiler (:mod:`media_pipeline.captions`):
+behavior shared with the Caption Compiler (:mod:`regrain.captions`):
 this module reuses that same character-level matching logic
-(:func:`media_pipeline.captions.check_alignment_matches_text`) and performs it
+(:func:`regrain.captions.check_alignment_matches_text`) and performs it
 here, before writing the artifact, rather than only validating the alignment
 data itself. When the aligned text does not match the original request text,
-this raises :class:`~media_pipeline.captions.AlignmentMismatchError`; no
+this raises :class:`~regrain.captions.AlignmentMismatchError`; no
 guessing or repair of the aligned text is performed.
 """
 
@@ -198,7 +198,7 @@ def validate_alignment(
     blank or whitespace-only records are rejected (never dropped) and invalid
     timestamps (non-numeric, non-finite, negative, end-before-start) can never
     be hidden. It then delegates to the Caption Compiler's
-    :func:`~media_pipeline.captions.parse_alignment` so the same normalization,
+    :func:`~regrain.captions.parse_alignment` so the same normalization,
     overlap rejection, and zero-duration tolerance apply here as downstream, and
     requires at least one effective token.
     Finally it rejects an alignment whose final timestamp exceeds the WAV

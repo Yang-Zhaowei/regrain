@@ -2,7 +2,7 @@
 
 These tests never import ``torch``, ``qwen_tts``, ``qwen_asr`` or run any GPU
 runtime. They exercise the pure orchestration boundary in
-:mod:`media_pipeline.render` with two injectable *task* fakes that model the two
+:mod:`regrain.render` with two injectable *task* fakes that model the two
 one-shot model subprocesses:
 
 - the TTS fake loads its "model" once (constructed once), synthesizes every
@@ -26,16 +26,16 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.render import (
+from regrain.render import (
     STATUS_COMPLETE,
     STATUS_FAILED,
     STATUS_INCOMPLETE,
     RenderError,
     render_speech,
 )
-from media_pipeline.captions import Caption
-from media_pipeline.postprocess import read_wav, write_wav
-from media_pipeline.render import _run_model_stage, _safe_name
+from regrain.captions import Caption
+from regrain.postprocess import read_wav, write_wav
+from regrain.render import _run_model_stage, _safe_name
 
 SAMPLE_RATE = 24_000
 _INSTRUCT = "自然、清晰、克制。"
@@ -692,7 +692,7 @@ def test_embedded_tts_stage_builds_requests_and_synthesizes_each_segment_on_cpu(
 
     import sys
 
-    from media_pipeline.render import _TTS_STAGE_SCRIPT
+    from regrain.render import _TTS_STAGE_SCRIPT
 
     run = tmp_path / "run"
     segments = [
@@ -714,8 +714,8 @@ import json
 import sys
 import types
 from pathlib import Path
-from media_pipeline import CustomVoiceRequest
-from media_pipeline.postprocess import write_wav
+from regrain import CustomVoiceRequest
+from regrain.postprocess import write_wav
 
 class FakeRuntimeEngine:
     def __init__(self, model_path, device="cuda:0"):
@@ -737,7 +737,7 @@ class FakeRuntimeEngine:
             }, ensure_ascii=False) + "\n")
         write_wav(output_path, [100] * 128, 24000)
 
-module = types.ModuleType("media_pipeline.runtimes.qwen_tts")
+module = types.ModuleType("regrain.runtimes.qwen_tts")
 module.Qwen3CustomVoiceTTS = FakeRuntimeEngine
 sys.modules[module.__name__] = module
 '''
@@ -1049,7 +1049,7 @@ def test_original_wav_preserved_and_cleaned_differs(tmp_path: Path) -> None:
 
 
 def test_zero_duration_caption_is_explicit_failure(tmp_path: Path) -> None:
-    from media_pipeline.render import _verify_caption_timeline
+    from regrain.render import _verify_caption_timeline
 
     run = tmp_path / "run"
     # float start < end, but millisecond quantization collapses it to zero ms.
@@ -1059,7 +1059,7 @@ def test_zero_duration_caption_is_explicit_failure(tmp_path: Path) -> None:
 
 
 def test_overlap_and_past_wav_captions_are_rejected(tmp_path: Path) -> None:
-    from media_pipeline.render import _verify_caption_timeline
+    from regrain.render import _verify_caption_timeline
 
     run = tmp_path / "run"
 
@@ -1235,12 +1235,12 @@ sys.exit(1)
 def test_fault_is_io_error_classifies_cause_chain() -> None:
     """``fault_is_io_error`` separates filesystem faults from validation errors."""
 
-    from media_pipeline.alignment import (
+    from regrain.alignment import (
         AlignmentRequestError,
         fault_is_io_error,
     )
-    from media_pipeline.captions import AlignmentMismatchError
-    from media_pipeline.postprocess import AudioPostprocessError
+    from regrain.captions import AlignmentMismatchError
+    from regrain.postprocess import AudioPostprocessError
 
     # Directly wrapped OSError (a missing input WAV read): the handler's
     # implicit chaining sets ``__cause__`` to the caught OSError.
@@ -1283,13 +1283,13 @@ from pathlib import Path
 spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 _manifest = spec["manifest"]
 
-from media_pipeline.alignment import (
+from regrain.alignment import (
     AlignmentRequest,
     AlignmentRequestError,
     AlignmentRuntimeError,
     fault_is_io_error,
 )
-from media_pipeline.captions import AlignmentError, AlignmentMismatchError
+from regrain.captions import AlignmentError, AlignmentMismatchError
 
 _ISOLATABLE = (AlignmentError, AlignmentMismatchError)
 _IO_OR_REQUEST = (AlignmentRequestError,)
@@ -1340,12 +1340,12 @@ from pathlib import Path
 spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 _manifest = spec["manifest"]
 
-from media_pipeline.alignment import (
+from regrain.alignment import (
     AlignmentRequestError,
     AlignmentRuntimeError,
     fault_is_io_error,
 )
-from media_pipeline.captions import AlignmentError, AlignmentMismatchError
+from regrain.captions import AlignmentError, AlignmentMismatchError
 
 _ISOLATABLE = (AlignmentError, AlignmentMismatchError)
 _IO_OR_REQUEST = (AlignmentRequestError,)
@@ -1389,7 +1389,7 @@ sys.exit(0)
 def _run_real_align_stage(sys_executable: str, stage: str, task: dict) -> dict:
     """Run the genuine embedded ``_ALIGN_STAGE_SCRIPT`` on CPU via a fake aligner.
 
-    A fake ``media_pipeline.runtimes.qwen_aligner`` is preloaded into
+    A fake ``regrain.runtimes.qwen_aligner`` is preloaded into
     ``sys.modules`` so the production ``Qwen3ForcedAlignment`` import inside the
     real stage script resolves to it, then the real ``_ALIGN_STAGE_SCRIPT`` is
     executed verbatim. This exercises the real embedded Alignment stage protocol
@@ -1398,11 +1398,11 @@ def _run_real_align_stage(sys_executable: str, stage: str, task: dict) -> dict:
 
     bootstrap = (
         "import sys, types\n"
-        "fake = types.ModuleType('media_pipeline.runtimes.qwen_aligner')\n"
+        "fake = types.ModuleType('regrain.runtimes.qwen_aligner')\n"
         "__engine__\n"
         "fake.Qwen3ForcedAlignment = FakeAligner\n"
-        "sys.modules['media_pipeline.runtimes.qwen_aligner'] = fake\n"
-        "from media_pipeline.render import _ALIGN_STAGE_SCRIPT\n"
+        "sys.modules['regrain.runtimes.qwen_aligner'] = fake\n"
+        "from regrain.render import _ALIGN_STAGE_SCRIPT\n"
         "exec(compile(_ALIGN_STAGE_SCRIPT, '<real align stage>', 'exec'))\n"
     ).replace("__engine__", stage)
 
@@ -1530,7 +1530,7 @@ class FakeAligner:
         pass
     def align(self, request, output_path):
         # A genuine alignment validation failure is a text mismatch.
-        from media_pipeline.captions import AlignmentMismatchError
+        from regrain.captions import AlignmentMismatchError
         raise AlignmentMismatchError("aligned text does not match the script")
 """
     task = {
@@ -1563,7 +1563,7 @@ def _half_up(value: int, rate: int) -> int:
 def test_postprocess_io_failure_stops_the_run(tmp_path, monkeypatch):
     """An OSError from postprocess is a run-level fault, not isolatable (C5)."""
 
-    from media_pipeline import render as render_module
+    from regrain import render as render_module
 
     def boom(*args, **kwargs):  # noqa: ARG005
         raise OSError("disk full")
@@ -1592,7 +1592,7 @@ def test_postprocess_io_failure_stops_the_run(tmp_path, monkeypatch):
 def test_caption_io_failure_stops_the_run(tmp_path, monkeypatch):
     """An OSError from caption loading is a run-level fault, not isolatable."""
 
-    from media_pipeline import render as render_module
+    from regrain import render as render_module
 
     def boom(*args, **kwargs):  # noqa: ARG005
         raise OSError("alignment unwritable")
@@ -1618,7 +1618,7 @@ def test_caption_io_failure_stops_the_run(tmp_path, monkeypatch):
 def test_caption_unclassified_exception_stops_the_run(tmp_path, monkeypatch):
     """A non-``CaptionError`` exception in the caption stage stops the run."""
 
-    from media_pipeline import render as render_module
+    from regrain import render as render_module
 
     def boom(*args, **kwargs):  # noqa: ARG005
         raise RuntimeError("unexpected")
@@ -1734,15 +1734,15 @@ def test_postprocess_missing_alignment_io_stops_the_run(tmp_path):
 def test_postprocess_speech_wraps_only_alignment_validation(tmp_path, monkeypatch):
     """postprocess_speech wraps only deterministic alignment validation (Blocker 1).
 
-    The real :func:`media_pipeline.postprocess.postprocess_speech` is exercised
+    The real :func:`regrain.postprocess.postprocess_speech` is exercised
     end to end: ``parse_alignment`` is replaced so we can prove the exception
     classification. A program/unknown bug must propagate unchanged, while the
     deterministic alignment validation failure becomes the isolatable
     ``AudioPostprocessError``.
     """
 
-    import media_pipeline.postprocess as pp
-    from media_pipeline.captions import AlignmentError
+    import regrain.postprocess as pp
+    from regrain.captions import AlignmentError
 
     wav = tmp_path / "a.wav"
     write_wav(wav, _waveform(24000), SAMPLE_RATE)
@@ -1780,7 +1780,7 @@ def test_postprocess_unknown_exception_stops_the_run(tmp_path, monkeypatch):
     the run stops (C5).
     """
 
-    import media_pipeline.postprocess as pp
+    import regrain.postprocess as pp
 
     def unknown(items):  # noqa: ARG005
         raise RuntimeError("unexpected internal error")
@@ -1861,7 +1861,7 @@ def test_postprocess_non_array_alignment_is_isolated(tmp_path):
 def test_final_publish_failure_returns_not_complete(tmp_path, monkeypatch):
     """A final artifact publish failure must not return ``complete``."""
 
-    from media_pipeline import render as render_module
+    from regrain import render as render_module
 
     def boom(source, destination):  # noqa: ARG005
         raise OSError("publish failed")
@@ -1889,7 +1889,7 @@ def test_final_publish_failure_returns_not_complete(tmp_path, monkeypatch):
 def test_final_report_write_failure_returns_not_complete(tmp_path, monkeypatch):
     """A report write failure on the success path must not return ``complete``."""
 
-    from media_pipeline import render as render_module
+    from regrain import render as render_module
 
     real_write = render_module._write_report
 
@@ -2026,12 +2026,12 @@ def test_isolated_interpreter_pins_package_without_shadowing_worker_dependencies
     import shutil
     import sys
 
-    import media_pipeline
-    import media_pipeline.render as render_module
+    import regrain
+    import regrain.render as render_module
 
     controller_root = tmp_path / "controller"
-    package_dir = controller_root / "media_pipeline"
-    shutil.copytree(Path(media_pipeline.__file__).resolve().parent, package_dir)
+    package_dir = controller_root / "regrain"
+    shutil.copytree(Path(regrain.__file__).resolve().parent, package_dir)
     (controller_root / "worker_dependency_probe.py").write_text(
         "VALUE = 'controller-neighbor'\n", encoding="utf-8"
     )
@@ -2051,12 +2051,12 @@ def test_isolated_interpreter_pins_package_without_shadowing_worker_dependencies
 import json
 import sys
 from pathlib import Path
-import media_pipeline
+import regrain
 import worker_dependency_probe
 spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 details = {
-    "package_file": media_pipeline.__file__,
-    "package_version": media_pipeline.__version__,
+    "package_file": regrain.__file__,
+    "package_version": regrain.__version__,
     "dependency_file": worker_dependency_probe.__file__,
     "dependency_value": worker_dependency_probe.VALUE,
 }
@@ -2072,7 +2072,7 @@ Path(spec["manifest"]).write_text(json.dumps({
     assert result["runtime_error"] is None
     details = json.loads(details_path.read_text(encoding="utf-8"))
     assert Path(details["package_file"]).resolve() == (package_dir / "__init__.py").resolve()
-    assert details["package_version"] == media_pipeline.__version__
+    assert details["package_version"] == regrain.__version__
     assert Path(details["dependency_file"]).resolve() == worker_dependency.resolve()
     assert details["dependency_value"] == "worker-environment"
 
@@ -2089,20 +2089,20 @@ def _good_timeline():
 
 
 def test_timeline_integrity_passes_for_consistent_timeline(tmp_path):
-    from media_pipeline.render import _verify_timeline_integrity
+    from regrain.render import _verify_timeline_integrity
 
     _verify_timeline_integrity(_good_timeline(), ["a", "b", "c"], 365, tmp_path)
 
 
 def test_timeline_integrity_rejects_deleted_segment(tmp_path):
-    from media_pipeline.render import _verify_timeline_integrity
+    from regrain.render import _verify_timeline_integrity
 
     with pytest.raises(RenderError, match="count"):
         _verify_timeline_integrity(_good_timeline()[:2], ["a", "b", "c"], 365, tmp_path)
 
 
 def test_timeline_integrity_rejects_changed_frame(tmp_path):
-    from media_pipeline.render import _verify_timeline_integrity
+    from regrain.render import _verify_timeline_integrity
 
     tampered = _good_timeline()
     tampered[1] = dict(tampered[1])
@@ -2112,7 +2112,7 @@ def test_timeline_integrity_rejects_changed_frame(tmp_path):
 
 
 def test_timeline_integrity_rejects_reordered_segment(tmp_path):
-    from media_pipeline.render import _verify_timeline_integrity
+    from regrain.render import _verify_timeline_integrity
 
     good = _good_timeline()
     reordered = [good[0], good[2], good[1]]
@@ -2123,8 +2123,8 @@ def test_timeline_integrity_rejects_reordered_segment(tmp_path):
 def test_final_verifier_rejects_tampered_timeline_on_disk(tmp_path):
     """Tampering the published timeline.json is caught by final verification."""
 
-    from media_pipeline.captions import Caption, render_srt
-    from media_pipeline.render import _verify_final_products
+    from regrain.captions import Caption, render_srt
+    from regrain.render import _verify_final_products
 
     total_frames = 310
     captions = [Caption(0.0, total_frames / SAMPLE_RATE, "文字")]
@@ -2194,7 +2194,7 @@ def test_global_captions_srt_use_integer_frame_offsets(tmp_path):
     silently regress to whole-ms data again.
     """
 
-    from media_pipeline.captions import build_captions, format_timestamp, load_alignment
+    from regrain.captions import build_captions, format_timestamp, load_alignment
 
     n_segments = 8
     # Durations chosen so cumulative ``start_frame`` is not a multiple of 24

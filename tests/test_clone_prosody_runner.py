@@ -10,7 +10,7 @@ import pytest
 
 from experiments.clone_prosody.plan import CONDITIONS, build_matrix, corpus_hash, joined_text, load_corpus
 from experiments.clone_prosody.runner import REPO, run_condition, run_experiment
-from media_pipeline.postprocess import write_wav
+from regrain.postprocess import write_wav
 
 
 def test_exact_matrix_and_repeats():
@@ -307,7 +307,7 @@ assert len(build_matrix()['runs']) == 13
     result = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True,
                             env={**os.environ, "PYTHONPATH": str(REPO / "src") + os.pathsep + str(REPO)})
     assert result.returncode == 0, result.stderr
-    for path in (REPO / "src" / "media_pipeline").rglob("*.py"):
+    for path in (REPO / "src" / "regrain").rglob("*.py"):
         assert "experiments.clone_prosody" not in path.read_text(encoding="utf-8")
 
 

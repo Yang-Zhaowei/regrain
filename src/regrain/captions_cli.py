@@ -1,8 +1,8 @@
-"""Command line entry point: ``python -m media_pipeline``.
+"""Caption compiler entry point: ``python -m regrain.captions_cli``.
 
 Compiles original text plus a raw forced-alignment JSON file into SRT:
 
-    python -m media_pipeline original.txt alignment.raw.json -o captions.srt
+    python -m regrain.captions_cli original.txt alignment.raw.json -o captions.srt
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from .captions import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m media_pipeline",
+        prog="regrain captions",
         description="Compile original text and forced alignment into SRT captions.",
     )
     parser.add_argument("text", help="path to the original script text file (UTF-8)")

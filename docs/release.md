@@ -1,10 +1,16 @@
-# v0.1.0 release candidate
+# v0.2.0 production-workflow candidate
 
-PR #17 is prepared for manual owner review. The [original candidate](validation/regrain-v0.1.0-owner-acceptance.md)
-has owner-reported real Core integration and Client Codex/Pi acceptance, with
-variable Clone consistency under Issue #8. The [CPU/package record](validation/regrain-v0.1.0-candidate.md)
-remains historical. Neither record approves a new wheel automatically.
-The owner controls Ready status, merge, final tag and publication.
+The [merged PR #17](https://github.com/Yang-Zhaowei/media-pipeline/pull/17) is
+the v0.1.0 predecessor and its owner acceptance remains
+historical evidence for that exact candidate only. It does not accept this
+v0.2.0 candidate, its new workflow behavior, or any rebuilt wheel. The owner
+controls review, merge, tagging, release and deployment. Keep the pull request
+in Draft until the owner completes review.
+
+The [naming migration](naming.md) is a breaking change. Use the
+[production workflow guide](dev/speech-production.md) for the current artifact,
+assembly and external-audio alignment interface. Existing model and accepted
+worker-environment paths remain unchanged.
 
 ## Build and identify
 
@@ -16,54 +22,54 @@ python scripts/prepare_release.py --output dist/REPLACE_WITH_FRESH_ARTIFACT_DIRE
 ```
 
 The script refuses dirty source and existing artifact names, uses the commit
-timestamp, checks package/distribution version agreement, and produces the wheel
-and `regrain-0.1.0-manifest.json`. Keep both together: the manifest records source
-commit/tree, Python/build versions, size and SHA256; `--version` only reports 0.1.0.
-The script publishes nothing. For reproducibility, retain the recorded build
-environment versions and compare two builds of the same clean commit locally.
+timestamp, checks package/distribution version agreement, and produces the
+`regrain-0.2.0` wheel and `regrain-0.2.0-manifest.json`. Keep both together: the
+manifest records source commit/tree, Python/build versions, size and SHA256;
+`--version` reports `0.2.0`. The script publishes nothing. For reproducibility,
+retain the recorded build-environment versions and compare two builds of the
+same clean commit locally.
 
-The wheel contains the lightweight Controller, runtime adapters and Skill/examples.
-No required runtime dependencies were added; model requirements stay in their
-existing environments. Experiments, checkpoints and private assets are not shipped.
+The wheel contains the `regrain` package, runtime adapters, production Skill and
+examples. Experiments, checkpoints and private assets are not shipped.
 
-## Verification before review
+## Verification before owner review
 
 ```powershell
 .venv/Scripts/python.exe -m pytest -o addopts=-ra -q
-$env:REGRAIN_TEST_WHEEL = (Resolve-Path ./dist/REPLACE_WITH_FRESH_ARTIFACT_DIRECTORY/regrain-0.1.0-py3-none-any.whl).Path
+$env:REGRAIN_TEST_WHEEL = (Resolve-Path ./dist/REPLACE_WITH_FRESH_ARTIFACT_DIRECTORY/regrain-0.2.0-py3-none-any.whl).Path
 .venv/Scripts/python.exe -m pytest tests/test_packaging.py -o addopts=-ra -q
 git diff --check
 ```
 
 Set `REGRAIN_TEST_WHEEL` equivalently on other shells. Without it, installed-wheel
-tests explicitly skip rather than building/downloading during a unit test run.
-They inspect packaging, validate shipped examples and exercise installed CLI /
-isolated CPU workers outside the checkout. Their [evidence limits](validation/regrain-v0.1.0-candidate.md#what-installed-wheel-acceptance-proves)
-remain distinct from GPU acceptance. Also run Skill lint, documentation local-link
-checks, and review changed-file scope. Do not change immutable fixtures.
+tests explicitly skip rather than building or downloading during a unit test
+run. They inspect packaging, validate shipped examples and exercise installed
+CLI and isolated CPU workers outside the checkout. CPU tests and real GPU
+acceptance are separate. Also run Skill lint and local documentation-link checks
+when available. Do not change immutable fixtures.
 
-## Owner acceptance and release checklist
+## Exact-artifact acceptance and release
 
-1. Review the final diff, manually mark PR #17 Ready for Review, and merge when
-   satisfied. Closure leaves it Draft and unmerged.
-2. Build from the exact intended merged/release source and run the checks above.
-   Record its own source commit, final wheel SHA256 and manifest. The original
-   GPU-tested candidate, closure HEAD, future merge commit and final wheel are
-   separate identities. README metadata and packaged Skill changes alter wheel
-   bytes even if application Python is unchanged; retain the old wheel/manifest.
+1. Review the complete Draft PR, including package, CLI, configuration,
+   artifacts, migration steps, tests and known limits. Leave readiness and merge
+   to the owner. PR #17 is historical context only; preserve its original
+   evidence and SHA without transferring acceptance.
+2. After the intended source is accepted and merged by the owner, build the
+   exact clean source into a new wheel and manifest. Record that source commit,
+   wheel SHA256 and manifest as a new candidate identity. Keep the prior
+   v0.1.0 wheel and installation intact for rollback.
 3. Follow [deployment verification](deployment.md#owner-only-core-candidate-installation)
-   for the **exact final wheel**: fresh versioned Controller, separate accepted
-   runtimes, static validation, real CustomVoice and Clone GPU E2E, artifacts,
-   listening/transitions/subtitle sync, and rollback. Record owner acceptance tied
-   to that binary before publication. CPU passes or unchanged Python do not replace
-   this gate. Explicitly assess/accept the remaining Clone quality limitation;
-   unattended consistency and long-form stability are not established.
-4. Resolve license and [naming/rename decisions](naming.md) before public release.
-   Any source/metadata change requires a newly identified/tested artifact.
-5. Only after exact-artifact acceptance and explicit owner approval, create
-   `v0.1.0` and publish wheel, manifest, release notes and acceptance evidence.
-   Do not silently replace the accepted wheel with a rebuild.
+   for that exact v0.2.0 wheel. On ai-core, verify installed CLI validation,
+   render, reusable artifact assembly, replacement audio, and external-audio
+   alignment with real runtime assets. Confirm output WAV/SRT/timeline, input
+   integrity, completion markers and failure behavior. Record the exact wheel
+   hash and real GPU results. CPU fakes and installed-wheel tests do not satisfy
+   this gate.
+4. Record owner listening and subtitle/timeline review for relevant generated
+   outputs. The earlier PR #17 owner acceptance cannot satisfy these new gates.
+5. Only after exact-artifact GPU and human acceptance and explicit owner
+   approval may the owner tag and publish `v0.2.0`, its wheel, manifest, release
+   notes and acceptance evidence. A rebuild creates a new artifact identity and
+   requires its own acceptance.
 
-If source changes after acceptance, rebuild and repeat affected CPU and owner GPU
-acceptance. Issue #8 remains open. No Ready/merge, repository rename, tag, release,
-PyPI publication or deployment is performed by this closure task.
+No merge, tag, release or deployment is performed by this candidate workflow.

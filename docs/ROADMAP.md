@@ -61,6 +61,13 @@ Real three-unit ai-core rendering and human acceptance passed; see the
 [evidence](validation/clone-render-acceptance.md). Remaining emotion/delivery
 stability is tracked in Issue #8.
 
+The v0.2.0 production-workflow evolution adds reusable unit artifacts,
+revision-based audio assembly and forced alignment for caller-provided audio
+and exact transcripts. Its active contracts and limits are documented in the
+[speech production guide](dev/speech-production.md). New real-GPU acceptance is
+artifact-specific; the merged [PR #17](https://github.com/Yang-Zhaowei/media-pipeline/pull/17)
+and its v0.1.0 evidence remain historical.
+
 ## Next gate: real workflow evaluation
 
 Speech Pipeline v0 is complete. Stop speculative feature development and

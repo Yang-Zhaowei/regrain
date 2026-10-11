@@ -13,10 +13,10 @@ It is intentionally pure:
   exact durations/timestamps -- model output is checked structurally, never
   against historical values;
 - it drives only the documented production interfaces
-  (:meth:`media_pipeline.runtimes.qwen_tts.Qwen3CustomVoiceTTS.synthesize`,
-  :meth:`media_pipeline.runtimes.qwen_aligner.Qwen3ForcedAlignment.align`,
-  :func:`media_pipeline.postprocess.postprocess_speech`,
-  :func:`media_pipeline.captions.compile_srt`).
+  (:meth:`regrain.runtimes.qwen_tts.Qwen3CustomVoiceTTS.synthesize`,
+  :meth:`regrain.runtimes.qwen_aligner.Qwen3ForcedAlignment.align`,
+  :func:`regrain.postprocess.postprocess_speech`,
+  :func:`regrain.captions.compile_srt`).
 
 Two layers are kept separate so the logic is unit-testable on CPU with fakes:
 
@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
-from media_pipeline.captions import (
+from regrain.captions import (
     DEFAULT_PAUSE_THRESHOLD,
     AlignedToken,
     Caption,
@@ -49,7 +49,7 @@ from media_pipeline.captions import (
     format_timestamp,
     load_alignment,
 )
-from media_pipeline.postprocess import (
+from regrain.postprocess import (
     TrimPlan,
     postprocess_speech,
     read_wav,
@@ -222,7 +222,7 @@ def run_chain(
     srt_path = run_dir / "final.srt"
 
     # --- text -> Production TTS -> raw.wav ---------------------------------
-    from media_pipeline import CustomVoiceRequest
+    from regrain import CustomVoiceRequest
 
     request = CustomVoiceRequest(
         text=text,
@@ -243,7 +243,7 @@ def run_chain(
         hooks.after_tts()
 
     # --- Production Alignment consumes that exact WAV ----------------------
-    from media_pipeline.alignment import AlignmentRequest
+    from regrain.alignment import AlignmentRequest
 
     align_request = AlignmentRequest(
         wav_path=raw_wav_path,
@@ -406,7 +406,7 @@ def _alignment_validation_succeeds(artifacts: E2EArtifacts) -> None:
     # runtime applies before writing; a stale/blank/overflowing alignment could
     # never reach the caption stage here. We re-read the raw records (not the
     # already-normalized AlignedTokens) so the full gate runs on real data.
-    from media_pipeline.alignment import validate_alignment
+    from regrain.alignment import validate_alignment
 
     try:
         with open(artifacts.alignment_path, encoding="utf-8") as handle:
@@ -650,7 +650,7 @@ def _srt_timestamp_ms(seconds: float) -> str:
     """Render ``seconds`` as an SRT timestamp string (independent oracle).
 
     This reproduces the production millisecond ``ROUND_HALF_UP`` semantics from
-    :func:`media_pipeline.captions.format_timestamp` as a stand-alone helper so
+    :func:`regrain.captions.format_timestamp` as a stand-alone helper so
     the E2E check does not depend on re-running the production renderer.
     """
 

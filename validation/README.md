@@ -50,15 +50,15 @@ and `git status --porcelain` against the repository root.
 
 | Variable | Meaning |
 | --- | --- |
-| `MEDIA_PIPELINE_TTS_MODEL` | Qwen3-TTS CustomVoice model path (production TTS) |
-| `MEDIA_ALIGNMENT_MODEL` or `MEDIA_PIPELINE_ALIGNMENT_MODEL` | Qwen3 ForcedAligner model path (production Alignment) |
-| `MEDIA_PIPELINE_TTS_PYTHON` | interpreter of the TTS environment |
-| `MEDIA_ALIGNMENT_PYTHON` or `MEDIA_PIPELINE_ALIGNMENT_PYTHON` | interpreter of the Alignment environment |
-| `MEDIA_PIPELINE_E2E_RUN_DIR` | a fresh, non-existent directory for the run artifacts; the driver refuses an existing one |
-| `MEDIA_PIPELINE_SPEECH_INSTRUCT` | reviewed narration instruction (optional; reviewed default otherwise) |
+| `REGRAIN_TTS_MODEL` | Qwen3-TTS CustomVoice model path (production TTS) |
+| `REGRAIN_ALIGNMENT_MODEL` | Qwen3 ForcedAligner model path (production Alignment) |
+| `REGRAIN_TTS_PYTHON` | interpreter of the TTS environment |
+| `REGRAIN_ALIGNMENT_PYTHON` | interpreter of the Alignment environment |
+| `REGRAIN_E2E_RUN_DIR` | a fresh, non-existent directory for the run artifacts; the driver refuses an existing one |
+| `REGRAIN_SPEECH_INSTRUCT` | reviewed narration instruction (optional; reviewed default otherwise) |
 
 No host paths, model paths, interpreter paths, tokens, or credentials are
-hard-coded. `MEDIA_PIPELINE_E2E_RUN_DIR` **must point to a fresh directory**;
+hard-coded. `REGRAIN_E2E_RUN_DIR` **must point to a fresh directory**;
 stale artifacts are never reused.
 
 ## Run
@@ -74,15 +74,15 @@ invoke the driver once and pass it both environments' interpreters and models:
 # Set these to actual model directories, venv interpreters, and a new output
 # directory on your integration host. On Linux, a venv interpreter is normally
 # <venv>/bin/python.
-MEDIA_PIPELINE_TTS_MODEL="/path/to/tts-model" \
-MEDIA_PIPELINE_TTS_PYTHON="/path/to/tts-venv/bin/python" \
-MEDIA_ALIGNMENT_MODEL="/path/to/alignment-model" \
-MEDIA_ALIGNMENT_PYTHON="/path/to/alignment-venv/bin/python" \
-MEDIA_PIPELINE_E2E_RUN_DIR="/path/to/new-run-directory" \
+REGRAIN_TTS_MODEL="/path/to/tts-model" \
+REGRAIN_TTS_PYTHON="/path/to/tts-venv/bin/python" \
+REGRAIN_ALIGNMENT_MODEL="/path/to/alignment-model" \
+REGRAIN_ALIGNMENT_PYTHON="/path/to/alignment-venv/bin/python" \
+REGRAIN_E2E_RUN_DIR="/path/to/new-run-directory" \
   python validation/speech_pipeline_e2e.py
 ```
 
-The driver creates `MEDIA_PIPELINE_E2E_RUN_DIR` (`exist_ok=False`), so pass a
+The driver creates `REGRAIN_E2E_RUN_DIR` (`exist_ok=False`), so pass a
 fresh, non-existent path on every run: stale artifacts are never reused, and
 re-invoking the driver against a directory it already populated fails instead of
 overwriting a previous run.
