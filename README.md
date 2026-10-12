@@ -67,10 +67,15 @@ exact-artifact acceptance. CPU checks run separately from real GPU verification.
 
 ## Development
 
-Contributor and Agent guidance is in [AGENTS.md](AGENTS.md). For development,
-install an editable checkout with `python -m pip install -e .` or `uv sync`.
-Use `python scripts/run_tests.py fast` for daily CPU checks and the
-[Full/GPU/Owner verification profiles](docs/dev/testing.md) for broader acceptance.
+Contributor and Agent guidance is in [AGENTS.md](AGENTS.md). In a development
+checkout, use `uv sync --python 3.12` and
+`uv run python scripts/run_tests.py fast` for daily CPU checks. For full
+CPU/GPU and exact-Wheel gates, see the
+[Fast/Full/GPU/Owner profiles](docs/dev/testing.md). Prepare release artifacts
+from a clean commit with the pinned
+`uv run --with hatchling==1.27.0 python scripts/prepare_release.py --output dist/FRESH_CANDIDATE`
+command in the [release guide](docs/release.md). Production Core installs the
+verified wheel in a separate versioned uv venv, not the development checkout.
 The [PR #18 review and measured performance](docs/validation/pr18-review-performance.md)
 record the current CPU evidence and its limits.
 
