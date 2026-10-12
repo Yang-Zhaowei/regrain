@@ -81,7 +81,10 @@ model or accepted Controller is changed. See the [migration guide](naming.md).
 Use the actual artifact directory and the source commit from its manifest.
 For example, the artifact may live under
 `/srv/ai/artifacts/regrain/pr18-<source-prefix>/`; the following shell variables
-are **placeholders**, not hard-coded installation defaults.
+are **placeholders**, not hard-coded installation defaults. Run the following
+as a **standalone installation script**; it enables `set -eu` to stop on failed
+verification. Do not paste that line into an interactive SSH login shell, where
+an expected validation failure could terminate the session.
 
 ```sh
 set -eu
