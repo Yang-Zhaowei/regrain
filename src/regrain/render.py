@@ -911,6 +911,15 @@ def _run_postprocess_stage(
         try:
             tokens = load_alignment(adjusted_alignment)
             local_captions = build_captions(seg["text"], tokens)
+            # A long alignment token can yield multiple captions with the same
+            # time span. Classify this deterministic caption defect before
+            # create_unit(), whose broader ArtifactError also covers I/O and
+            # integrity failures that must remain run-level faults.
+            if any(
+                current.start < previous.end - 1e-6
+                for previous, current in zip(local_captions, local_captions[1:])
+            ):
+                raise CaptionError("local captions overlap; Unit cannot be assembled")
         except CaptionError as exc:
             # Only the deterministic caption/alignment semantic validation
             # exceptions (``AlignmentError`` / ``AlignmentMismatchError``) are
