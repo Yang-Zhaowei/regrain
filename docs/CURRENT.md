@@ -67,6 +67,12 @@ timeline and completion contracts remain compatible for revisual. See
 [production workflows](dev/speech-production.md), [migration](naming.md) and
 [verification](validation/speech-production-v0.2.md).
 
+PR #18's [independent review and measured CPU optimization](validation/pr18-review-performance.md)
+adds bounded Controller PCM processing, exact per-operation snapshot checks and
+atomic Final completion publication. CPU benchmark byte parity and test profiles
+do not establish model accuracy or ai-core acceptance; the new wheel has its own
+artifact identity and owner gates.
+
 New source/wheels require their own identities and [exact-artifact acceptance](release.md).
 Old GPU acceptance applies to its original artifact only. No v0.2 GPU inference,
 deployment, release or merge approval is claimed. Git origin now points at

@@ -7,11 +7,12 @@ from pathlib import Path, PureWindowsPath
 
 from .artifacts import (
     ArtifactError, SpeechUnit, create_unit, load_unit, read_json,
-    sha256_file, snapshot_unit, write_json,
+    sha256_file, write_json,
+    _load_unit_files, _snapshot_unit_files,
 )
-from .audio_assembly import _CleanedSegment, assemble_audio
+from .audio_assembly import _CleanedSegment, assemble_audio, _publish_complete_marker
 from .errors import RenderError
-from .postprocess import read_wav
+from .wav_io import same_pcm
 from .render import RenderResult, SegmentResult, _safe_name
 
 
@@ -23,7 +24,10 @@ def relative_path(value: object, base: Path) -> Path:
     portable = value.replace("\\", "/")
     if windows.drive or windows.root or portable.startswith("/") or ":" in portable:
         raise ArtifactError("artifact/audio path must be relative, without drive or URI")
-    return (base / portable).resolve()
+    try:
+        return (base / portable).resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ArtifactError(f"cannot resolve artifact/audio path: {exc}") from exc
 
 
 def require_object(value: object, keys: set[str], required: set[str], label: str) -> dict:
@@ -53,7 +57,7 @@ def _reference(path: Path, base: Path) -> str:
         raise ArtifactError("portable references require assets and request on the same filesystem drive") from exc
 
 
-def load_assembly_plan(path: str | Path, *, _data=None) -> list[tuple[str, SpeechUnit, int]]:
+def load_assembly_plan(path: str | Path, *, _data=None, _metadata_only: bool = False) -> list[tuple[str, SpeechUnit, int]]:
     request = Path(path)
     data = require_object(read_json(request) if _data is None else _data, {"schema_version", "units"}, {"schema_version", "units"}, "assembly")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -71,7 +75,8 @@ def load_assembly_plan(path: str | Path, *, _data=None) -> list[tuple[str, Speec
         if not isinstance(pin, str) or not re.fullmatch(r"[0-9a-f]{64}", pin):
             raise ArtifactError("unit sha256 must be a lowercase SHA256 digest")
         pause = integer(item.get("pause_after_ms", 0), "pause_after_ms")
-        unit = load_unit(relative_path(item["artifact"], request.parent), expected_sha256=pin)
+        loader = _load_unit_files if _metadata_only else load_unit
+        unit = loader(relative_path(item["artifact"], request.parent), expected_sha256=pin)
         output.append((identity, unit, pause))
     if len({unit.sample_rate for _, unit, _ in output}) != 1:
         raise ArtifactError("sample rate mismatch; convert and align replacement audio explicitly")
@@ -109,7 +114,7 @@ def create_assembly_plan(run_dir: str | Path, output_path: str | Path) -> Path:
         if not manifest.is_relative_to(run):
             raise ArtifactError("run unit_manifest escapes run directory")
         pin = string(entry.get("unit_sha256"), "run unit_sha256")
-        unit = load_unit(manifest, expected_sha256=pin)
+        unit = _load_unit_files(manifest, expected_sha256=pin)
         if ("text" in segment and unit.text != segment["text"]) or ("language" in request and unit.language != request["language"]):
             raise ArtifactError("run transcript/language does not match Unit")
         units.append({"id": segment["id"], "artifact": _reference(manifest, destination.parent), "sha256": unit.manifest_sha256,
@@ -129,7 +134,7 @@ def assemble_speech(plan_path: str | Path, output_dir: str | Path) -> RenderResu
         raise RenderError("output directory already exists; refusing to overwrite")
     try:
         data = read_json(plan_path)
-        units = load_assembly_plan(plan_path, _data=data)
+        units = load_assembly_plan(plan_path, _data=data, _metadata_only=True)
     except (ArtifactError, OSError, ValueError) as exc:
         raise RenderError(str(exc)) from exc
     run.mkdir(parents=True)
@@ -140,8 +145,9 @@ def assemble_speech(plan_path: str | Path, output_dir: str | Path) -> RenderResu
         write_json(run / "report.json", report)
         cleaned = []
         for order, (identity, source, pause) in enumerate(units, 1):
-            unit = snapshot_unit(source, run / "units" / f"{order:04d}")
-            cleaned.append(_CleanedSegment(identity, f"{order:04d}", unit.samples, unit.sample_rate, unit.frames, pause, unit.local_captions))
+            unit = _snapshot_unit_files(source, run / "units" / f"{order:04d}")
+            cleaned.append(_CleanedSegment(identity, f"{order:04d}", None, unit.sample_rate, unit.frames, pause, unit.local_captions,
+                                            unit.audio_path, unit.audio_sha256, unit.pcm_sha256))
             report["segments"].append({"segment_id": identity, "text": unit.text, "status": "ok",
                 "unit_manifest": unit.manifest_path.relative_to(run).as_posix(), "unit_sha256": unit.manifest_sha256,
                 "source": {"request_unit_index": order - 1, "sha256": source.manifest_sha256,
@@ -151,7 +157,7 @@ def assemble_speech(plan_path: str | Path, output_dir: str | Path) -> RenderResu
         report.update(status="complete", artifacts={"wav_path": "final/final.wav", "srt_path": "final/final.srt", "timeline_path": "final/timeline.json"})
         report["completed_stages"].append("assemble")
         write_json(run / "report.json", report)
-        (final / ".complete").write_text("complete", encoding="utf-8")
+        _publish_complete_marker(final)
         return RenderResult("complete", run, run / "report.json", final / "final.wav", final / "final.srt", final / "timeline.json",
                             [SegmentResult(identity, "ok") for identity, _, _ in units])
     except Exception as exc:
@@ -200,16 +206,17 @@ def import_render_run(run_dir: str | Path, output_dir: str | Path) -> Path:
             unit = create_unit(target / "units" / f"{index:04d}", audio_path=audio, alignment_path=alignment,
                 text=seg["text"], language=request["language"], provenance={"workflow": "legacy_import",
                     "source_request_sha256": sha256_file(source / "request.json"), "source_report_sha256": sha256_file(source / "report.json"),
-                    "segment_id": seg["id"], "integrity_origin": "bytes_observed_at_import"})
+                    "segment_id": seg["id"], "integrity_origin": "bytes_observed_at_import"}, _materialize_samples=False)
             report["segments"].append({"segment_id": seg["id"], "text": seg["text"], "status": "ok",
                 "unit_manifest": unit.manifest_path.relative_to(target).as_posix(), "unit_sha256": unit.manifest_sha256})
-            cleaned.append(_CleanedSegment(seg["id"], f"{index:04d}", unit.samples, unit.sample_rate, unit.frames,
-                integer(seg.get("pause_after_ms", 0), "pause_after_ms"), unit.local_captions))
+            cleaned.append(_CleanedSegment(seg["id"], f"{index:04d}", None, unit.sample_rate, unit.frames,
+                integer(seg.get("pause_after_ms", 0), "pause_after_ms"), unit.local_captions,
+                unit.audio_path, unit.audio_sha256, unit.pcm_sha256))
             write_json(target / "report.json", report)
         final = assemble_audio(cleaned, target)
         # Reconstruct the legacy Final to bind observed Units to that episode.
         # Legacy hashes start at import; successful replay proves consistency.
-        if read_wav(source / "final" / "final.wav") != read_wav(final / "final.wav"):
+        if not same_pcm(source / "final" / "final.wav", final / "final.wav"):
             raise ArtifactError("legacy Final WAV does not match its cleaned Units")
         if (source / "final" / "final.srt").read_text(encoding="utf-8") != (final / "final.srt").read_text(encoding="utf-8"):
             raise ArtifactError("legacy Final SRT does not match its Units/transcript")
@@ -221,7 +228,7 @@ def import_render_run(run_dir: str | Path, output_dir: str | Path) -> Path:
         report["status"] = "complete"
         report["artifacts"] = {"wav_path": "final/final.wav", "srt_path": "final/final.srt", "timeline_path": "final/timeline.json"}
         write_json(target / "report.json", report)
-        (final / ".complete").write_text("complete", encoding="utf-8")
+        _publish_complete_marker(final)
         return target
     except Exception as exc:
         try:

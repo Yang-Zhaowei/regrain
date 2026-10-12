@@ -69,6 +69,10 @@ exact-artifact acceptance. CPU checks run separately from real GPU verification.
 
 Contributor and Agent guidance is in [AGENTS.md](AGENTS.md). For development,
 install an editable checkout with `python -m pip install -e .` or `uv sync`.
+Use `python scripts/run_tests.py fast` for daily CPU checks and the
+[Full/GPU/Owner verification profiles](docs/dev/testing.md) for broader acceptance.
+The [PR #18 review and measured performance](docs/validation/pr18-review-performance.md)
+record the current CPU evidence and its limits.
 
 ## License
 

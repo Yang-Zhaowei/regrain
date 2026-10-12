@@ -54,6 +54,12 @@ manifests: use `speech import-run` into a fresh directory, then `speech plan`.
 Import validates observed Units and reconstructs the old Final. Integrity hashes
 start at import, not retrospectively; retain the untouched old episode.
 
+The downstream revisual request format tag `media-pipeline` is an existing wire
+contract, not a Regrain Python/CLI alias. Keep that tag when importing Regrain
+speech into revisual: its [schema at reviewed commit 8f4f6a6](https://github.com/Yang-Zhaowei/revisual/blob/8f4f6a654e76fa78fb2700a8d6fb38db79eee8c7/src/domain/schema.ts)
+accepts `internal` and `media-pipeline`. Changing the tag to `regrain` would require
+a separately authorized consumer migration. This review changed no downstream code.
+
 Active code and replay tools use new names. Historical contracts, immutable
 fixtures, owner evidence, PR URLs and physical runtime paths keep actual names.
 The configured repository is [Yang-Zhaowei/regrain](https://github.com/Yang-Zhaowei/regrain).

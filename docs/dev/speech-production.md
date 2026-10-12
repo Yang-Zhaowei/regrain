@@ -134,7 +134,7 @@ run/
     final.wav
     final.srt
     timeline.json
-    .complete               literal complete; written last
+    .complete               literal complete; atomically published last
 ```
 
 Unit schema 1 has `kind: speech_unit`, `text`, `language`, `audio` with path/hash/
@@ -144,7 +144,9 @@ plan pin bind exact manifest bytes. Internal asset paths must remain inside the
 Unit, including symlinks. Hashes identify changed bytes and stale relationships;
 they are not signatures or acoustic quality judgments. Strict JSON rejects
 duplicate keys, NaN/Infinity. Source files are checked, copied and checked again.
-Failed Units have no valid marker. Treat Python-returned arrays as read-only;
+Failed Units have no valid marker. Compiled local captions must also be
+non-overlapping; an unassemblable Unit cannot receive a completion marker.
+Treat Python-returned arrays as read-only;
 assembly revalidates pinned disk assets.
 
 An assembled run owns complete snapshots, so originals can move without breaking
@@ -152,6 +154,10 @@ later revisions based on the new run. Unit provenance retains initial lineage;
 assembly report sources store selected manifest digest/content ID and the original
 request Unit index. Original authored references remain in `request.json` as
 historical input, while `unit_manifest` always resolves relative to the new run.
+Snapshots preserve exact manifest/audio/alignment bytes and their pins. Verified
+metadata is reused only within the current operation. Source and copied bytes
+are still hashed, markers checked, and the destination independently validated;
+there is no persistent cache based on file timestamps.
 
 Final keeps revisual's existing paths and timeline shape: `sample_rate`,
 `total_frames`, `start_seconds`, `duration_seconds`, ordered `segments` containing
@@ -163,6 +169,9 @@ unrounded local captions by `start_frame / sample_rate`, and quantizes SRT once.
 Staged and published files are reread and checked against exact hashes, WAV
 metadata, caption text/timing and frame timeline before complete report/marker.
 Per-unit millisecond rounding never accumulates into global offsets.
+The literal Final marker becomes visible through atomic replacement only after
+validation and the complete report. Its bytes remain `complete` for existing
+consumers. This is an atomic visibility guarantee, not a crash-durability promise.
 
 ## Failure recovery and old runs
 
@@ -197,9 +206,20 @@ invalid render/external/assembly inputs 3; incomplete 4; started render/align/
 assembly/import failures 5. Import preflight errors use 2.
 `regrain captions` keeps its existing SRT-output interface.
 
-Limits: Controller decoding caches whole distinct source WAVs, and assembly uses
-memory proportional to selected audio;
-300 seconds bounds an individual Aligner request, not total memory. No streaming,
-automatic VAD/transcript splitting, gain matching, ASR or quality ranking is
-included. Unit schema and processing strings are version boundaries. See
-[CPU results and owner GPU checklist](../validation/speech-production-v0.2.md).
+Controller assembly, legacy PCM comparison and external recording preflight/
+window snapshots use bounded PCM blocks (65,536 frames), with metadata and
+caption memory proportional to Unit/token count. Assembly writes each verified
+Unit and deterministic silence directly into the staged Final, then publishes
+by same-filesystem rename. External preflight records each window's PCM hash;
+copied windows must match before any Aligner call, including when a changed
+source is restored between boundary file-hash checks.
+
+Public `SpeechUnit.samples`, `load_unit`, `create_unit`, `snapshot_unit`,
+`load_assembly_plan` and `load_audio_request` retain their eager list defaults.
+Callers using these helpers still allocate sample lists. Explicit `trim` still
+materializes one window in the existing postprocessor, and model workers retain
+their existing memory behavior. The 300-second bound applies to an individual
+Aligner request, not GPU memory or total job duration. No automatic VAD/transcript
+splitting, gain matching, ASR or quality ranking is included. Unit schema and
+processing strings are version boundaries. See [measured CPU costs and review](../validation/pr18-review-performance.md)
+and [owner GPU checklist](../validation/speech-production-v0.2.md).

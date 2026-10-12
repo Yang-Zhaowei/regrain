@@ -41,6 +41,14 @@ $env:REGRAIN_TEST_WHEEL = (Resolve-Path ./dist/REPLACE_WITH_FRESH_ARTIFACT_DIREC
 git diff --check
 ```
 
+For daily work and exact-candidate CPU verification, use the
+[Fast/Full/GPU/Owner profiles](dev/testing.md). `scripts/run_tests.py full` requires
+both the clean current commit's wheel and its manifest, validates source/tree/
+file identity, and includes real offline installed-wheel checks. Ordinary pytest
+remains available without that gate; skipped wheel cases are not installation
+acceptance. The GPU profile fails on missing configuration and remains separate
+from CPU checks and owner listening.
+
 Set `REGRAIN_TEST_WHEEL` equivalently on other shells. Without it, installed-wheel
 tests explicitly skip rather than building or downloading during a unit test
 run. They inspect packaging, validate shipped examples and exercise installed

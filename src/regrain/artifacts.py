@@ -20,11 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from .alignment import AlignmentRequest, validate_alignment, validate_request, validate_wav
+from .alignment import AlignmentRequest, validate_alignment, validate_request
 from .captions import (
     AlignedToken, Caption, build_captions, check_alignment_matches_text, format_timestamp,
 )
 from .postprocess import read_wav
+from .wav_io import inspect_wav
 
 __all__ = [
     "ArtifactError", "SpeechUnit", "create_unit", "load_unit", "snapshot_unit",
@@ -67,6 +68,26 @@ class SpeechUnit:
     @property
     def duration(self) -> float:
         return self.frames / self.sample_rate
+
+
+@dataclass(frozen=True)
+class _UnitFiles:
+    """Private verified disk assets; public SpeechUnit still owns a samples list."""
+    manifest_path: Path
+    manifest_sha256: str
+    text: str
+    language: str
+    sample_rate: int
+    frames: int
+    tokens: list[AlignedToken]
+    local_captions: list[Caption]
+    provenance: dict[str, Any]
+    audio_path: Path
+    alignment_path: Path
+    content_id: str
+    audio_sha256: str
+    alignment_sha256: str
+    pcm_sha256: str
 
 
 def _canonical(payload: Any) -> bytes:
@@ -190,13 +211,19 @@ def _confined_asset(root: Path, value: Any, field: str) -> Path:
 
 def _validated_data(
     audio_path: Path, alignment_path: Path, text: Any, language: Any,
-) -> tuple[list[int], int, int, list[AlignedToken], list[Caption]]:
+    *, materialize: bool = True,
+) -> tuple[list[int], int, int, list[AlignedToken], list[Caption], str | None]:
     try:
         validate_request(AlignmentRequest(audio_path, text, language))
-        sample_rate, frames = validate_wav(audio_path)
-        samples, decoded_rate, decoded_frames = read_wav(audio_path)
-        if (decoded_rate, decoded_frames) != (sample_rate, frames):
-            raise ArtifactError("WAV changed while its metadata was read")
+        if materialize:
+            samples, sample_rate, frames = read_wav(audio_path)
+            if sample_rate <= 0 or frames <= 0:
+                raise ArtifactError("WAV must have positive sample rate and frames")
+            pcm_digest = None
+        else:
+            info = inspect_wav(audio_path)
+            sample_rate, frames, samples = info.sample_rate, info.frames, []
+            pcm_digest = info.pcm_sha256
         raw_alignment = read_json(alignment_path)
         if not isinstance(raw_alignment, list):
             raise ArtifactError("alignment must be a JSON array")
@@ -211,7 +238,9 @@ def _validated_data(
             for caption in captions
         ):
             raise ArtifactError("captions are empty, have no usable duration, or are outside the WAV timeline")
-        return samples, sample_rate, frames, tokens, captions
+        if any(current.start < previous.end - 1e-6 for previous, current in zip(captions, captions[1:])):
+            raise ArtifactError("local captions overlap; Unit cannot be assembled")
+        return samples, sample_rate, frames, tokens, captions, pcm_digest
     except (ValueError, OSError, EOFError, struct.error) as exc:
         if isinstance(exc, ArtifactError):
             raise
@@ -220,14 +249,15 @@ def _validated_data(
 
 def _load_unit(
     manifest_path: str | Path, *, expected_sha256: str | None, require_marker: bool,
-) -> SpeechUnit:
+    materialize: bool = True,
+) -> SpeechUnit | _UnitFiles:
     manifest = Path(manifest_path).absolute()
-    root = manifest.parent.resolve()
     try:
+        root = manifest.parent.resolve()
         if manifest.resolve(strict=True).parent != root or not manifest.is_file():
             raise ArtifactError("Unit manifest must be a file in its own directory")
         raw_manifest = manifest.read_bytes()
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         raise ArtifactError(f"cannot read Unit manifest {manifest}: {exc}") from exc
     digest = hashlib.sha256(raw_manifest).hexdigest()
     if expected_sha256 is not None:
@@ -277,8 +307,9 @@ def _load_unit(
     frames = _positive_integer(audio.get("frames"), "audio.frames")
     if sha256_file(audio_path) != audio_hash or sha256_file(alignment_path) != alignment_hash:
         raise ArtifactError("Unit asset SHA-256 does not match its manifest")
-    samples, decoded_rate, decoded_frames, tokens, captions = _validated_data(
+    samples, decoded_rate, decoded_frames, tokens, captions, pcm_digest = _validated_data(
         audio_path, alignment_path, payload.get("text"), payload.get("language"),
+        materialize=materialize,
     )
     if (sample_rate, frames) != (decoded_rate, decoded_frames):
         raise ArtifactError("Unit WAV metadata does not match its manifest")
@@ -287,6 +318,10 @@ def _load_unit(
         or sha256_file(manifest) != digest
     ):
         raise ArtifactError("Unit changed while it was being verified")
+    if not materialize:
+        return _UnitFiles(manifest, digest, payload["text"], payload["language"], sample_rate,
+                          frames, tokens, captions, provenance, audio_path, alignment_path,
+                          content_id, audio_hash, alignment_hash, pcm_digest)
     return SpeechUnit(
         manifest_path=manifest, manifest_sha256=digest, text=payload["text"],
         language=payload["language"], samples=samples, sample_rate=sample_rate,
@@ -303,10 +338,15 @@ def load_unit(
     return _load_unit(manifest_path, expected_sha256=expected_sha256, require_marker=True)
 
 
+def _load_unit_files(manifest_path: str | Path, *, expected_sha256: str | None = None) -> _UnitFiles:
+    return _load_unit(manifest_path, expected_sha256=expected_sha256, require_marker=True, materialize=False)
+
+
 def create_unit(
     output_dir: str | Path, *, audio_path: str | Path, alignment_path: str | Path,
     text: str, language: str, provenance: dict[str, Any],
-) -> SpeechUnit:
+    _materialize_samples: bool = True,
+) -> SpeechUnit | _UnitFiles:
     """Create a completed Unit in a new directory from immutable source inputs.
 
     Failure may leave diagnostic files in the new directory, but never a valid
@@ -322,7 +362,7 @@ def create_unit(
     provenance_copy = _parse_json(_canonical(provenance), Path("provenance"))
     audio_hash = sha256_file(source_audio)
     alignment_hash = sha256_file(source_alignment)
-    _validated_data(source_audio, source_alignment, text, language)
+    _, sample_rate, frames, _, _, _ = _validated_data(source_audio, source_alignment, text, language, materialize=False)
     if sha256_file(source_audio) != audio_hash or sha256_file(source_alignment) != alignment_hash:
         raise ArtifactError("source inputs changed while being validated")
     try:
@@ -342,9 +382,6 @@ def create_unit(
             or sha256_file(copied_alignment) != alignment_hash
         ):
             raise ArtifactError("source inputs changed during Unit copying")
-        _, sample_rate, frames, _, _ = _validated_data(
-            copied_audio, copied_alignment, text, language,
-        )
         payload: dict[str, Any] = {
             "schema_version": 1, "kind": "speech_unit", "text": text,
             "language": language,
@@ -356,9 +393,9 @@ def create_unit(
         payload["content_id"] = hashlib.sha256(_canonical(payload)).hexdigest()
         manifest = destination / "unit.json"
         write_json(manifest, payload)
-        verified = _load_unit(manifest, expected_sha256=None, require_marker=False)
-        _atomic_write(marker, (verified.manifest_sha256 + "\n").encode("ascii"))
-        return load_unit(manifest, expected_sha256=verified.manifest_sha256)
+        manifest_hash = sha256_file(manifest)
+        _atomic_write(marker, (manifest_hash + "\n").encode("ascii"))
+        return _load_unit(manifest, expected_sha256=manifest_hash, require_marker=True, materialize=_materialize_samples)
     except (ValueError, OSError) as exc:
         if marker.exists():
             marker.unlink()
@@ -370,18 +407,41 @@ def create_unit(
 def snapshot_unit(unit: SpeechUnit, output_dir: str | Path) -> SpeechUnit:
     """Copy a pinned, freshly verified Unit into independently owned assets."""
 
-    verified = load_unit(unit.manifest_path, expected_sha256=unit.manifest_sha256)
-    snapshot = create_unit(
-        output_dir, audio_path=verified.audio_path, alignment_path=verified.alignment_path,
-        text=verified.text, language=verified.language, provenance=verified.provenance,
-    )
+    snapshot = _snapshot_unit_files(unit, output_dir)
+    return load_unit(snapshot.manifest_path, expected_sha256=snapshot.manifest_sha256)
+
+
+def _snapshot_unit_files(unit: SpeechUnit | _UnitFiles, output_dir: str | Path) -> _UnitFiles:
+    # A private reference was fully validated in this operation's preflight.
+    # Copy/check every pinned source and target byte below; do not trust stat
+    # timestamps or keep a cross-run cache. Public objects are reread normally.
+    verified = unit if isinstance(unit, _UnitFiles) else _load_unit_files(unit.manifest_path, expected_sha256=unit.manifest_sha256)
+    destination = Path(output_dir).absolute()
     try:
-        if snapshot.content_id != verified.content_id:
-            raise ArtifactError("source Unit changed before its snapshot was copied")
-        load_unit(verified.manifest_path, expected_sha256=verified.manifest_sha256)
-    except ArtifactError:
-        # A source changed between the verification and copying boundaries.
-        # Keep diagnostic data, but revoke completion of this failed snapshot.
-        (snapshot.manifest_path.parent / ".complete").unlink()
-        raise
-    return snapshot
+        destination.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        raise ArtifactError(f"Unit output directory must be new: {destination}: {exc}") from exc
+    marker = destination / ".complete"
+    try:
+        source_root = verified.manifest_path.parent.resolve()
+        sources = ((verified.audio_path, verified.audio_path.relative_to(source_root).as_posix(), verified.audio_sha256),
+                   (verified.alignment_path, verified.alignment_path.relative_to(source_root).as_posix(), verified.alignment_sha256),
+                   (verified.manifest_path, verified.manifest_path.name, verified.manifest_sha256))
+        for source, name, digest in sources:
+            target = destination.joinpath(*name.split("/"))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        for source, name, digest in sources:
+            if sha256_file(source) != digest or sha256_file(destination / name) != digest:
+                raise ArtifactError("source Unit SHA-256 changed before its snapshot was copied")
+        # Verify source completion has not been revoked while copying.
+        source_marker = _confined_asset(verified.manifest_path.parent.resolve(), ".complete", "completion marker")
+        if source_marker.read_bytes() not in tuple((verified.manifest_sha256 + ending).encode("ascii") for ending in ("", "\n", "\r\n")):
+            raise ArtifactError("source Unit completion changed during snapshot")
+        _atomic_write(marker, (verified.manifest_sha256 + "\n").encode("ascii"))
+        return _load_unit_files(destination / verified.manifest_path.name, expected_sha256=verified.manifest_sha256)
+    except (ValueError, OSError) as exc:
+        marker.unlink(missing_ok=True)
+        if isinstance(exc, ArtifactError):
+            raise
+        raise ArtifactError(f"could not snapshot speech Unit: {exc}") from exc

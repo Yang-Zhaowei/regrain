@@ -82,8 +82,13 @@ The owner controls readiness, merge, release and deployment. This PR remains
 Draft pending exact-artifact GPU and human acceptance. No new modality, service,
 NLE integration, external repository change or deployment automation is included.
 
+The subsequent [PR #18 engineering review and CPU performance measurements](pr18-review-performance.md)
+supersede the original Controller memory limitation; original test/owner evidence
+above remains historical, with no acceptance transferred to a rebuilt wheel.
+
 Known limits are in the [production contract](../dev/speech-production.md): explicit
-long-audio text windows, PCM16/common-rate input, in-memory whole-source decoding,
+long-audio text windows, PCM16/common-rate input, eager public sample-list helpers
+and per-window trim/model-worker memory,
 no acoustic mismatch detection or automatic loudness/quality correction, no
 in-place resume or automatic salvage of TTS-only intermediates. Windows symlink
 guards need validation on a host that can create them; POSIX runtime behavior

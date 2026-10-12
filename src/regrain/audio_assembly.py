@@ -2,12 +2,14 @@
 from __future__ import annotations
 import json
 import hashlib
+import struct
+import wave
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from .captions import Caption, render_srt
-from .postprocess import read_wav, write_wav
 from .errors import RenderError
+from .wav_io import BLOCK_FRAMES, inspect_wav
 
 _TIMING_TOLERANCE = 1e-6
 _SRT_MS_TOLERANCE = 0.5
@@ -18,11 +20,14 @@ class _CleanedSegment:
 
     segment_id: str
     safe_name: str
-    samples: list[int]
+    samples: list[int] | None
     sample_rate: int
     frames: int
     pause_after_ms: int
     local_captions: list[Caption]
+    audio_path: Path | None = None
+    audio_sha256: str | None = None
+    pcm_sha256: str | None = None
 
 
 def assemble_audio(cleaned: list[_CleanedSegment], run_dir: Path, *, publish=None) -> Path:
@@ -44,7 +49,6 @@ def assemble_audio(cleaned: list[_CleanedSegment], run_dir: Path, *, publish=Non
     # recombined across input segments.
 
     total_frames = 0
-    all_samples: list[int] = []
     global_captions: list[Caption] = []
     timeline_segments: list[dict] = []
     running = 0  # O_i: cumulative frames before this segment
@@ -63,8 +67,6 @@ def assemble_audio(cleaned: list[_CleanedSegment], run_dir: Path, *, publish=Non
                 )
             )
 
-        all_samples.extend(seg.samples)
-        all_samples.extend([0] * g_i)
         running += n_i + g_i
 
         timeline_segments.append(
@@ -99,7 +101,7 @@ def assemble_audio(cleaned: list[_CleanedSegment], run_dir: Path, *, publish=Non
     final_srt = staging / "final.srt"
     final_timeline = staging / "timeline.json"
 
-    write_wav(final_wav, all_samples, common_rate)
+    _write_assembled_wav(final_wav, cleaned, common_rate)
     final_srt.write_text(srt_text, encoding="utf-8", newline="\n")
     final_timeline.write_text(
         json.dumps(
@@ -132,14 +134,14 @@ def assemble_audio(cleaned: list[_CleanedSegment], run_dir: Path, *, publish=Non
     # treats a failed publish/report/marker write as success.
     final_dir = run_dir / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
-    expected_hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+    expected_hashes = {path.name: _file_hash(path)
                        for path in (final_wav, final_srt, final_timeline)}
     publish(final_wav, final_dir / "final.wav")
     publish(final_srt, final_dir / "final.srt")
     publish(final_timeline, final_dir / "timeline.json")
 
     for name, expected in expected_hashes.items():
-        if hashlib.sha256((final_dir / name).read_bytes()).hexdigest() != expected:
+        if _file_hash(final_dir / name) != expected:
             raise RenderError(f"published final product hash mismatch: {name}", run_dir=run_dir)
     _verify_final_products(final_dir, common_rate, total_frames, global_captions,
                            [seg.segment_id for seg in cleaned])
@@ -148,9 +150,66 @@ def assemble_audio(cleaned: list[_CleanedSegment], run_dir: Path, *, publish=Non
 
 
 def _publish(source: Path, destination: Path) -> None:
-    """Copy a staged final product into ``final/``."""
+    """Move a verified staged product within the fresh run's filesystem."""
 
-    destination.write_bytes(source.read_bytes())
+    source.replace(destination)
+
+
+def _publish_complete_marker(final_dir: Path) -> None:
+    """Expose the existing literal marker atomically, after verified artifacts."""
+    from .artifacts import _atomic_write
+
+    _atomic_write(final_dir / ".complete", b"complete")
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _write_assembled_wav(path: Path, segments: list[_CleanedSegment], rate: int) -> None:
+    """Bounded concatenation; old in-memory internal callers remain supported."""
+    silence = b"\0" * (BLOCK_FRAMES * 2)
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        for seg in segments:
+            if seg.audio_path is not None:
+                if seg.audio_sha256 and _file_hash(seg.audio_path) != seg.audio_sha256:
+                    raise RenderError("Unit WAV changed before assembly", run_dir=path.parent.parent)
+                with wave.open(str(seg.audio_path), "rb") as source:
+                    pcm_digest = hashlib.sha256()
+                    if (source.getnchannels(), source.getsampwidth(), source.getcomptype(),
+                        source.getframerate(), source.getnframes()) != (1, 2, "NONE", rate, seg.frames):
+                        raise RenderError("Unit WAV metadata changed during assembly", run_dir=path.parent.parent)
+                    remaining = seg.frames
+                    while remaining:
+                        count = min(remaining, BLOCK_FRAMES)
+                        raw = source.readframes(count)
+                        if len(raw) != count * 2:
+                            raise RenderError("truncated Unit WAV during assembly", run_dir=path.parent.parent)
+                        output.writeframesraw(raw)
+                        pcm_digest.update(raw)
+                        remaining -= count
+                if seg.pcm_sha256 and pcm_digest.hexdigest() != seg.pcm_sha256:
+                    raise RenderError("Unit PCM changed while assembling", run_dir=path.parent.parent)
+                if seg.audio_sha256 and _file_hash(seg.audio_path) != seg.audio_sha256:
+                    raise RenderError("Unit WAV changed during assembly", run_dir=path.parent.parent)
+            else:
+                if seg.samples is None or len(seg.samples) != seg.frames:
+                    raise RenderError("Unit sample/frame count mismatch", run_dir=path.parent.parent)
+                for start in range(0, seg.frames, BLOCK_FRAMES):
+                    block = seg.samples[start:start + BLOCK_FRAMES]
+                    output.writeframesraw(struct.pack(f"<{len(block)}h", *block))
+            remaining = _half_up_frames(seg.pause_after_ms, rate)
+            while remaining:
+                count = min(remaining, BLOCK_FRAMES)
+                output.writeframesraw(silence[:count * 2])
+                remaining -= count
 
 
 # --- timeline helpers -------------------------------------------------------
@@ -293,8 +352,9 @@ def _verify_final_products(
     """Re-read the published final WAV/SRT/timeline and verify them against disk."""
 
     # --- WAV: frame count / rate / format ---
-    samples, rate, frames = read_wav(final_dir / "final.wav")
-    if rate != sample_rate or frames != total_frames or len(samples) != frames:
+    info = inspect_wav(final_dir / "final.wav")
+    rate, frames = info.sample_rate, info.frames
+    if rate != sample_rate or frames != total_frames:
         raise RenderError(
             "final WAV re-read mismatch: "
             f"rate={rate}, frames={frames}, expected {sample_rate}/{total_frames}",

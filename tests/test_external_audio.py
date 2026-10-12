@@ -14,64 +14,10 @@ import pytest
 
 from regrain import external_audio, render
 from regrain.artifacts import ArtifactError, load_unit, read_json, sha256_file, write_json
-from regrain.captions import has_alignable_content
 from regrain.external_audio import align_speech, load_audio_request
 from regrain.postprocess import read_wav, write_wav
 from regrain.render import RenderError
-
-
-class FakeExternalAligner:
-    """One model-stage call processes all snapshots using their actual durations."""
-
-    def __init__(self, *, bad: dict | None = None, fail_ids=(), runtime_after=None):
-        self.calls = []
-        self.bad = bad or {}
-        self.fail_ids = set(fail_ids)
-        self.runtime_after = runtime_after
-
-    def __call__(self, task: dict) -> dict:
-        self.calls.append(task)
-        directory = Path(task["run_dir"]) / "segments"
-        entries = []
-        for index, segment in enumerate(task["segments"]):
-            if self.runtime_after is not None and index >= self.runtime_after:
-                return {"runtime_error": "controlled model-stage crash", "segments": entries}
-            if segment["id"] in self.fail_ids:
-                entries.append({"segment_id": segment["id"], "status": "alignment_failed",
-                                "reason": "controlled transcript mismatch"})
-                continue
-            audio = directory / (segment["safe_name"] + ".wav")
-            _, rate, frames = read_wav(audio)
-            records = self.bad.get(segment["id"], [{
-                "text": "".join(char for char in segment["text"] if has_alignable_content(char)),
-                "start": 0.125, "end": frames / rate - 0.125,
-            }])
-            # Deliberately permit invalid model data; production must reject it.
-            (directory / (segment["safe_name"] + ".alignment.raw.json")).write_text(
-                json.dumps(records, ensure_ascii=False), encoding="utf-8",
-            )
-            entries.append({"segment_id": segment["id"], "status": "ok"})
-        return {"runtime_error": None, "segments": entries}
-
-
-def write_audio_request(tmp_path: Path, *, segments=None, processing=None, samples=None,
-                        rate=100) -> tuple[Path, Path]:
-    audio = tmp_path / "真人录音.wav"
-    samples = samples if samples is not None else ([0] * 40 + [1000] * 120 + [0] * 60 + [2000] * 100 + [0] * 80)
-    write_wav(audio, samples, rate)
-    payload = {"schema_version": 1, "language": "Chinese", "segments": segments or [
-        {"id": "真人旁白", "audio": audio.name, "text": "准确讲稿。"},
-    ]}
-    if processing is not None:
-        payload["processing"] = processing
-    request = tmp_path / "audio.json"
-    write_json(request, payload)
-    return request, audio
-
-
-def run_alignment(request: Path, output: Path, task: FakeExternalAligner):
-    return align_speech(request, output, alignment_python="fake-align-python",
-                        alignment_model="fake-align-model", device="cpu", _align_task=task)
+from support import FakeExternalAligner, run_alignment, write_audio_request
 
 
 def forbid_call(*args, **kwargs):
@@ -403,8 +349,8 @@ def test_source_mutation_after_preflight_is_rejected_before_models(tmp_path, mon
     request, original = write_audio_request(tmp_path)
     original_load = external_audio.load_audio_request
 
-    def loading_then_mutating(path):
-        result = original_load(path)
+    def loading_then_mutating(path, **options):
+        result = original_load(path, **options)
         samples, rate, _ = read_wav(original)
         samples[0] = 10
         write_wav(original, samples, rate)

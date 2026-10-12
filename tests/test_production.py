@@ -20,7 +20,7 @@ from regrain.captions import Caption, render_srt
 from regrain.errors import RenderError
 from regrain.postprocess import read_wav, write_wav
 from regrain.production import assemble_speech, create_assembly_plan, import_render_run
-from test_render import FakeAlignerEngine, FakeTTSEngine
+from support import FakeAlignerEngine, FakeTTSEngine
 
 
 @pytest.fixture(autouse=True)
@@ -447,15 +447,15 @@ raise SystemExit(7)
 def test_source_changed_between_preflight_and_snapshot_is_failed_run(tmp_path, monkeypatch) -> None:
     unit = _unit(tmp_path, "voice")
     plan = _plan(tmp_path / "assembly.json", [unit])
-    original_snapshot = production.snapshot_unit
+    original_snapshot = production._snapshot_unit_files
 
     def changed_snapshot(source, destination):
-        altered = list(source.samples)
+        altered, _, _ = read_wav(source.audio_path)
         altered[-1] += 1
         write_wav(source.audio_path, altered, source.sample_rate)
         return original_snapshot(source, destination)
 
-    monkeypatch.setattr(production, "snapshot_unit", changed_snapshot)
+    monkeypatch.setattr(production, "_snapshot_unit_files", changed_snapshot)
     output = tmp_path / "failed"
     with pytest.raises(RenderError, match="SHA-256"):
         assemble_speech(plan, output)
@@ -471,7 +471,8 @@ def test_assembly_publish_report_and_marker_faults_never_complete(tmp_path, monk
     output = tmp_path / "failed"
     original_publish = audio_assembly._publish
     original_report = production.write_json
-    original_write_text = Path.write_text
+    from regrain import artifacts
+    original_atomic_write = artifacts._atomic_write
 
     if fault in {"publish", "corrupt_publish", "valid_wrong_pcm_publish", "valid_wrong_timeline_publish"}:
         def publish(source, destination):
@@ -497,13 +498,13 @@ def test_assembly_publish_report_and_marker_faults_never_complete(tmp_path, monk
             return original_report(path, payload)
         monkeypatch.setattr(production, "write_json", write_report)
     else:
-        def write_text(path, text, *args, **kwargs):
+        def write_marker(path, data):
             if path == output / "final" / ".complete":
                 if fault == "marker_after_write":
-                    original_write_text(path, text, *args, **kwargs)
+                    original_atomic_write(path, data)
                 raise OSError("simulated marker failure")
-            return original_write_text(path, text, *args, **kwargs)
-        monkeypatch.setattr(Path, "write_text", write_text)
+            return original_atomic_write(path, data)
+        monkeypatch.setattr(artifacts, "_atomic_write", write_marker)
 
     with pytest.raises(RenderError) as excinfo:
         assemble_speech(plan, output)

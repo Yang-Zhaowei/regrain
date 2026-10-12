@@ -17,7 +17,7 @@ from regrain.captions import Caption
 from regrain.postprocess import read_wav, write_wav
 from regrain.production import create_assembly_plan
 from regrain.render import RenderError
-from test_external_audio import FakeExternalAligner, run_alignment, write_audio_request
+from support import FakeExternalAligner, run_alignment, write_audio_request
 
 
 @pytest.fixture(autouse=True)
@@ -116,6 +116,9 @@ def test_alignment_flags_override_environment(tmp_path, capsys, monkeypatch):
     code, _ = invoke(capsys, ["speech", "align", str(request), "--output", str(tmp_path / "run"),
                             "--alignment-python", "flag-python", "--alignment-model", "flag-model", "--device", "cpu"])
     assert code == 0
+    assert len(received) == 1
+    prepared = received[0].pop("_prepared")
+    assert all(win.samples is None for win in prepared[1])
     assert received == [{"alignment_python": "flag-python", "alignment_model": "flag-model", "device": "cpu"}]
 
 

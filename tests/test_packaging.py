@@ -10,6 +10,7 @@ from __future__ import annotations
 import configparser
 import json
 import os
+import shutil
 import subprocess
 import venv
 import zipfile
@@ -24,6 +25,9 @@ def _clean_env() -> dict[str, str]:
     env = os.environ.copy()
     for key in ("PYTHONPATH", "PYTHONHOME"):
         env.pop(key, None)
+    for key in list(env):
+        if key.startswith(("UV_", "PIP_")):
+            env.pop(key)
     env["PYTHONNOUSERSITE"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
     return env
@@ -71,13 +75,17 @@ class Controller:
 def controller(wheel: Path, tmp_path_factory: pytest.TempPathFactory) -> Controller:
     root = tmp_path_factory.mktemp("regrain-installed")
     environment = root / "controller"
-    venv.EnvBuilder(with_pip=True).create(environment)
+    installer = shutil.which("uv")
+    venv.EnvBuilder(with_pip=installer is None).create(environment)
     python = _python(environment)
-    _run(
-        [python, "-m", "pip", "--disable-pip-version-check", "install",
-         "--no-index", "--no-deps", wheel],
-        root,
-    )
+    if installer:
+        # Use an available installer without bootstrapping pip in every clean
+        # environment. No network, dependency resolution or shared cache.
+        _run([installer, "pip", "install", "--python", python, "--no-index",
+              "--no-deps", "--no-config", "--no-cache", "--offline", wheel], root)
+    else:
+        _run([python, "-m", "pip", "--disable-pip-version-check", "install",
+              "--no-index", "--no-deps", wheel], root)
     package = Path(_run(
         [python, "-c", "import regrain; print(regrain.__file__)"], root,
     ).strip()).parent

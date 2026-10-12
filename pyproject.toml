@@ -30,5 +30,10 @@ packages = ["src/regrain"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 addopts = "-q"
+markers = [
+    "fast: in-process CPU correctness and immutable regression checks",
+    "full: CPU process isolation, installed-wheel and optional real-torch checks",
+    "gpu: explicitly configured real model integration",
+]

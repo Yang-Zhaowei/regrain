@@ -64,6 +64,7 @@ from .audio_assembly import (
     _CleanedSegment, assemble_audio, _publish, _half_up_frames,
     _verify_caption_timeline, _verify_timeline_integrity, _caption_ms,
     _verify_final_products,
+    _publish_complete_marker,
 )
 
 from .tts import CustomVoiceRequest, TTSRuntimeError
@@ -938,11 +939,12 @@ def _run_postprocess_stage(
                 "voice": _voice_fields(script),
                 "effective_instruct": seg["effective_instruct"],
             },
+            _materialize_samples=False,
         )
         if sha256_file(raw_wav) != expected_raw_hash or sha256_file(raw_alignment) != raw_alignment_hash:
             (unit.manifest_path.parent / ".complete").unlink(missing_ok=True)
             raise RenderError(f"immutable raw inputs changed during processing: {segment_id}", run_dir=run_dir)
-        samples, sample_rate, frames = unit.samples, unit.sample_rate, unit.frames
+        sample_rate, frames = unit.sample_rate, unit.frames
         local_captions = unit.local_captions
         for entry in report.segments:
             if entry["segment_id"] == segment_id:
@@ -953,11 +955,14 @@ def _run_postprocess_stage(
             _CleanedSegment(
                 segment_id=segment_id,
                 safe_name=safe_name,
-                samples=samples,
+                samples=None,
                 sample_rate=sample_rate,
                 frames=frames,
                 pause_after_ms=seg["pause_after_ms"],
                 local_captions=list(local_captions),
+                audio_path=unit.audio_path,
+                audio_sha256=unit.audio_sha256,
+                pcm_sha256=unit.pcm_sha256,
             )
         )
         report_segment(report, segment_id, "ok")
@@ -1019,7 +1024,7 @@ def _assemble_and_publish(
     _write_report(run_dir, report, strict=True)
 
     # The completion marker is the very last step: nothing writes after it.
-    (final_dir / ".complete").write_text("complete", encoding="utf-8")
+    _publish_complete_marker(final_dir)
 
     return RenderResult(
         status=STATUS_COMPLETE,

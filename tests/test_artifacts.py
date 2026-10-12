@@ -82,15 +82,16 @@ def test_snapshot_is_independent_and_reverifies_original(tmp_path, source):
 
 def test_snapshot_rejects_source_change_between_verify_and_copy(tmp_path, source, monkeypatch):
     original = _unit(tmp_path, source)
-    original_create = artifacts.create_unit
+    original_copy = artifacts.shutil.copyfile
 
-    def mutate_before_copy(*args, **kwargs):
-        samples, rate, _ = read_wav(original.audio_path)
-        samples[0] += 1
-        write_wav(original.audio_path, samples, rate)
-        return original_create(*args, **kwargs)
+    def mutate_before_copy(src, dst):
+        if Path(src) == original.audio_path:
+            samples, rate, _ = read_wav(original.audio_path)
+            samples[0] += 1
+            write_wav(original.audio_path, samples, rate)
+        return original_copy(src, dst)
 
-    monkeypatch.setattr(artifacts, "create_unit", mutate_before_copy)
+    monkeypatch.setattr(artifacts.shutil, "copyfile", mutate_before_copy)
     with pytest.raises(ArtifactError, match="changed before its snapshot"):
         snapshot_unit(original, tmp_path / "snapshot")
     assert not (tmp_path / "snapshot" / ".complete").exists()

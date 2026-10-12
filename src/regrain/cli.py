@@ -104,7 +104,7 @@ def _production_command(args: argparse.Namespace) -> int:
         if command == "align":
             # Validate caller audio/transcript before requesting any runtime configuration.
             try:
-                load_audio_request(args.request)
+                prepared = load_audio_request(args.request, _metadata_only=True)
             except (ValueError, OSError) as exc:
                 _emit(command, "validation_failed", error=str(exc))
                 return 3
@@ -117,7 +117,7 @@ def _production_command(args: argparse.Namespace) -> int:
                     _emit(command, "error", error="missing runtime configuration: REGRAIN_" + name.upper())
                     return 2
                 runtime[name] = value
-            result = align_speech(args.request, args.output, device=args.device, **runtime)
+            result = align_speech(args.request, args.output, device=args.device, _prepared=prepared, **runtime)
         elif command == "assemble":
             result = assemble_speech(args.plan, args.output)
         elif command == "plan":
