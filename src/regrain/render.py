@@ -539,7 +539,9 @@ def render_speech(
     a dedicated subprocess.
     """
 
-    run_dir = Path(output_dir)
+    # Match Assembly/External Alignment: internal Unit manifests use absolute
+    # paths, so the run root must have the same basis before relative_to().
+    run_dir = Path(output_dir).resolve()
 
     # --- preflight (before any model or output directory is touched) --------
     script = load_and_validate_script(
