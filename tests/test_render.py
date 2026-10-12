@@ -996,6 +996,53 @@ def test_global_captions_use_integer_frame_offsets(tmp_path: Path) -> None:
 # --- C5: failure semantics on postprocess/caption stages --------------------
 
 
+def test_overlapping_local_captions_are_isolated_before_unit_creation(tmp_path: Path) -> None:
+    """A long aligned token is invalid as a Unit, not a fatal episode error."""
+
+    text = "这是一段没有内部时间信息的长语音文本" * 3
+    script = _write_script(tmp_path, [
+        _seg("first", "第一段。"),
+        _seg("bad", text),
+        _seg("third", "第三段。"),
+    ])
+    run = tmp_path / "run"
+
+    def align_with_long_token(task: dict) -> dict:
+        directory = Path(task["run_dir"]) / "segments"
+        for segment in task["segments"]:
+            path = directory / (segment["safe_name"] + ".alignment.raw.json")
+            if segment["id"] == "bad":
+                path.write_text(json.dumps([
+                    {"text": text, "start": 0.2, "end": 6.8},
+                ], ensure_ascii=False), encoding="utf-8")
+            else:
+                _, rate, frames = read_wav(directory / (segment["safe_name"] + ".wav"))
+                _write_alignment(path, segment["text"], frames / rate)
+        return {"runtime_error": None, "segments": [
+            {"segment_id": seg["id"], "status": "ok"} for seg in task["segments"]
+        ]}
+
+    result = render_speech(
+        script, run, tts_python="python", alignment_python="python",
+        tts_model="/m", alignment_model="/m", max_segment_chars=200,
+        _wav_task=FakeTTSEngine(durations={"first": 1.0, "bad": 7.0, "third": 1.0}),
+        _align_task=align_with_long_token,
+    )
+    assert result.status == STATUS_INCOMPLETE
+    assert {seg.segment_id: seg.status for seg in result.segments} == {
+        "first": "ok", "bad": "caption_failed", "third": "ok",
+    }
+    report = json.loads((run / "report.json").read_text(encoding="utf-8"))
+    assert report["status"] == STATUS_INCOMPLETE
+    assert "local captions overlap" in next(
+        seg["reason"] for seg in report["segments"] if seg["segment_id"] == "bad"
+    )
+    assert (run / "units" / _safe_name("first") / ".complete").is_file()
+    assert (run / "units" / _safe_name("third") / ".complete").is_file()
+    assert not (run / "units" / _safe_name("bad") / ".complete").exists()
+    assert not (run / "final" / ".complete").exists()
+
+
 def test_caption_failure_records_segment_and_reports_incomplete(tmp_path: Path) -> None:
     """A deterministic caption failure records the segment without crashing."""
 
