@@ -70,46 +70,118 @@ relative directory relationship. Static validation does not check asset existenc
 checkpoint compatibility or audible quality. Runtime/model paths belong in Core
 local configuration, not in speech.json.
 
-## Owner-only Core candidate installation
+## Owner-only Core candidate installation (uv)
 
-The owner performs these steps after reviewing the exact v0.2.0 artifact. They
-create a new Controller directory and do not modify the accepted v0.1.0 runtime,
-existing TTS/aligner environments, or model directories. The v0.2.0 naming
-migration is breaking; see the [migration guide](naming.md). Replace the example
-variables:
+The owner performs these steps after reviewing the exact v0.2.0 artifact. Use
+**versioned `uv venv` + `uv pip install` on Core**, not a global `uv tool`
+installation and not `uv run` against a checkout. The installed CLI is executed
+directly; uv is the environment manager. No existing TTS/Aligner environment,
+model or accepted Controller is changed. See the [migration guide](naming.md).
+
+Use the actual artifact directory and the source commit from its manifest.
+For example, the artifact may live under
+`/srv/ai/artifacts/regrain/pr18-<source-prefix>/`; the following shell variables
+are **placeholders**, not hard-coded installation defaults.
 
 ```sh
 set -eu
 artifact_dir=/path/to/reviewed/artifacts
 controller_root=/srv/ai/apps/regrain/controllers
-release_id=0.2.0-REPLACE_WITH_SOURCE_SHA
+release_id=0.2.0-REPLACE_WITH_SOURCE_SHA_PREFIX
 candidate="$controller_root/$release_id"
-# Compare this output with the reviewed manifest's wheel.sha256.
-sha256sum "$artifact_dir/regrain-0.2.0-py3-none-any.whl"
-test ! -e "$candidate"
-python3.12 -m venv "$candidate"
-"$candidate/bin/python" -m pip install --no-index --no-deps "$artifact_dir/regrain-0.2.0-py3-none-any.whl"
+wheel="$artifact_dir/regrain-0.2.0-py3-none-any.whl"
+manifest="$artifact_dir/regrain-0.2.0-manifest.json"
+
+uv --version
+uv python find 3.12
+
+# Verify wheel bytes/size and explicit source identity before installation.
+uv run --no-project --no-python-downloads --python 3.12 python - "$manifest" "$wheel" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+wheel = Path(sys.argv[2])
+digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+assert manifest["project"] == "regrain"
+assert manifest["version"] == "0.2.0"
+assert manifest["source_commit"] == "REPLACE_WITH_FULL_SOURCE_SHA"
+assert wheel.name == manifest["wheel"]["filename"]
+assert wheel.stat().st_size == manifest["wheel"]["bytes"]
+assert digest == manifest["wheel"]["sha256"]
+print("Verified", manifest["source_commit"], digest)
+PY
+
+# Refuse any existing directory or symlink; never upgrade an accepted venv.
+test ! -e "$candidate" && test ! -L "$candidate"
+mkdir -p "$controller_root"
+uv venv --python 3.12 --no-python-downloads "$candidate"
+uv pip install --python "$candidate/bin/python" --offline --no-deps --link-mode copy "$wheel"
+uv pip check --python "$candidate/bin/python"
+cp "$manifest" "$candidate/regrain-manifest.json"
 unset PYTHONPATH PYTHONHOME
 "$candidate/bin/regrain" --version
+"$candidate/bin/python" -c 'import regrain; print(regrain.__file__)'
 "$candidate/bin/regrain" speech validate /path/to/episode/speech.json
 ```
 
-Keep the manifest alongside the versioned installation for source/hash provenance.
-Stop on command failure and do not reuse an existing candidate directory.
+Do not install Regrain again in the TTS/Aligner venvs. Keep the exact manifest
+beside this installation, and keep the original wheel/manifest in the immutable
+artifact archive. An existing directory means stop and create a **new**
+version/source-labelled Controller; do not overwrite. `--offline` and
+`--no-deps` prevent package downloads and model dependency installation; the
+v0.2.0 Controller has no required runtime dependencies.
 
-Use the accepted runtime paths and existing checkpoints, for example:
+### Core runtime configuration and daily execution
+
+Model and worker paths are **Core-local**. Loading
+`/srv/ai/config/regrain/runtime.env` is explicit; Regrain does not read this
+file automatically. Export all variables so a CLI subprocess can see them:
 
 ```sh
-export REGRAIN_TTS_PYTHON=/srv/ai/apps/media-pipeline/tts/.venv/bin/python
-export REGRAIN_ALIGNMENT_PYTHON=/srv/ai/apps/media-pipeline/aligner/.venv/bin/python
-export REGRAIN_ALIGNMENT_MODEL=/path/to/existing/Qwen3-ForcedAligner-0.6B
-"$candidate/bin/regrain" speech render /path/to/clone-episode/speech.json \
-  --tts-model /path/to/existing/Qwen3-TTS-12Hz-1.7B-Base \
+set -a
+. /srv/ai/config/regrain/runtime.env
+set +a
+
+# This file should include these local values (illustrative paths):
+# REGRAIN_TTS_PYTHON=/srv/ai/apps/media-pipeline/tts/.venv/bin/python
+# REGRAIN_ALIGNMENT_PYTHON=/srv/ai/apps/media-pipeline/aligner/.venv/bin/python
+# REGRAIN_ALIGNMENT_MODEL=/srv/ai/models/speech/asr/Qwen3-ForcedAligner-0.6B
+# REGRAIN_TTS_MODEL=/srv/ai/models/speech/tts/Qwen3-TTS-12Hz-1.7B-Base
+# REGRAIN_VOICE_REGISTRY=/srv/ai/assets/voices/regrain
+
+test -x "$REGRAIN_TTS_PYTHON"
+test -x "$REGRAIN_ALIGNMENT_PYTHON"
+RG="$candidate/bin/regrain"
+"$RG" --version
+```
+
+Without exported `REGRAIN_TTS_PYTHON`/`REGRAIN_ALIGNMENT_PYTHON`,
+`speech render` stops at configuration preflight even if `--tts-model` is set.
+Explicit CLI flags override these variables. Source this file in **each new
+shell/session** or use a separately maintained launcher that loads it; do not
+assume SSH, uv or Regrain persists shell environment. Prefer direct executable
+paths in automation and avoid leaving `set -e` enabled in interactive SSH
+sessions, where a nonzero CLI result can close the shell.
+
+Run with the accepted existing interpreters and checkpoints, using fresh
+output directories:
+
+```sh
+"$RG" speech render /path/to/clone-episode/speech.json \
+  --tts-model /srv/ai/models/speech/tts/Qwen3-TTS-12Hz-1.7B-Base \
   --output /path/to/clone-episode/runs/0.2.0-candidate-clone
-"$candidate/bin/regrain" speech render /path/to/custom-voice-episode/speech.json \
-  --tts-model /path/to/existing/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+"$RG" speech render /path/to/custom-voice-episode/speech.json \
+  --tts-model /srv/ai/models/speech/tts/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --output /path/to/custom-voice-episode/runs/0.2.0-candidate-custom
 ```
+
+These are real GPU workflows invoked by the lightweight Controller, **not**
+`uv run` commands. Changing an episode's `--tts-model` does not require
+reinstalling any Python package; audio assembly itself does not need model
+settings.
 
 For external audio, validate the prepared alignment request and run
 `regrain speech align request.json --output <new-run-dir>` with the alignment
