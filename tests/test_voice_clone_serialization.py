@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.voice_clone import VoiceAssetError, VoiceCloneAsset
-from media_pipeline.runtimes.qwen_voice_clone import load_voice_asset, save_voice_asset
+from regrain.voice_clone import VoiceAssetError, VoiceCloneAsset
+from regrain.runtimes.qwen_voice_clone import load_voice_asset, save_voice_asset
 
 
 def test_real_tensor_roundtrip_in_fresh_cpu_process(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_real_tensor_roundtrip_in_fresh_cpu_process(tmp_path: Path) -> None:
     script = """
 import sys
 import torch
-from media_pipeline.runtimes.qwen_voice_clone import load_voice_asset
+from regrain.runtimes.qwen_voice_clone import load_voice_asset
 item = load_voice_asset(sys.argv[1]).payload['items'][0]
 assert item['ref_text'] == '  Exact transcript.\\n'
 assert item['ref_code'].dtype == torch.int64

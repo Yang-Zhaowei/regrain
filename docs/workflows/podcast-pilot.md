@@ -1,8 +1,12 @@
 # First podcast-video workflow assessment
 
-Status: evaluation plan requested by the owner, **not a new implementation
-milestone**. Speech Pipeline v0 is closed. Use a real episode to decide which
-small gaps need project code under the [admission rule](../ROADMAP.md).
+Status: evaluation plan requested by the owner. Speech Pipeline v0 is closed;
+use a real episode to assess these production workflows and identify any later
+gaps under the [admission rule](../ROADMAP.md).
+
+The v0.2.0 production workflow adds unit reuse and external-audio alignment.
+See the [speech production guide](../dev/speech-production.md) for the current
+CLI, artifact rules and supported recording limits.
 
 ## Intended workflow
 
@@ -30,7 +34,9 @@ arbitrary-manuscript-to-episode operation.
 | Narration script | External writing tools | Separate spoken text from headings, citations and stage directions; review pronunciations and approve segment boundaries |
 | Voice selection | `CustomVoiceRequest(text, language, speaker, instruct)` and runtime speaker/language discovery | Select a supported voice and audition actual script material; only Chinese / Uncle_Fu has the recorded E2E acceptance |
 | Speech invocation | `regrain speech validate` and `speech render` ([CLI contract](../dev/render-entry-point.md#command-line)) | Author `speech.json`, review its performance-unit plan, and supply the existing runtime configuration |
-| Whole-episode speech | Existing renderer assembles caller-approved units into WAV + SRT + timeline | Choose and approve unit boundaries; evaluate long-form production stability under Issue #8 |
+| Unit reuse and revision | `speech import-run`, `speech plan`, and `speech assemble` reuse verified unit artifacts | Review the selected assets and pause changes; replacement audio requires alignment valid for its exact transcript |
+| External audio | `speech align` performs forced alignment from caller-provided audio and exact transcript, then emits WAV + SRT + timeline | Confirm transcript correctness and divide recordings over the supported window limit into explicit frame windows |
+| Whole-episode speech | `speech render` creates new units; `speech assemble` reuses or replaces units without resynthesizing unchanged audio | Choose and approve unit boundaries; evaluate long-form production stability under Issue #8 |
 | HTML visual pages | External HTML authoring and browser rendering | Produce PNGs for static pages or video/frame sequences for animations; HTML itself is not an encoded video asset |
 | Chapter timing | Per-utterance audio and alignment timing | Record chapter/segment start and end from final audio frame counts, including inserted pauses |
 | Final video | External FFmpeg or chosen NLE | Combine rendered pages/clips, narration and subtitles; review timing, loudness, resolution and final export |
@@ -75,10 +81,13 @@ alternate spoken/display text is not an existing feature.
    `final/timeline.json` to assemble the video with the chosen finishing tool.
    The renderer already assembles speech and shifts captions by integer-frame
    offsets; use the final timeline to place visuals.
-6. Revise one paragraph in the authored script, validate and render into a new
-   run directory, update visual timing from the new timeline, and export again.
-   Accept the trial only after full listening and visual /
-   subtitle synchronization review of the final encoded video.
+6. For a pause-only edit, import the completed run, create an assembly plan with
+   the revised pause, inspect it, and assemble into a new run directory. For a
+   replacement unit, add a verified artifact from another run or recording and
+   assemble the same way. Use `regrain speech render` only for text that needs
+   new synthesis. Update visual timing from the new timeline, then export again.
+   Accept the trial only after full listening and visual/subtitle
+   synchronization review of the final encoded video.
 
 For a common audio sample rate `R`, segment `i` begins at
 `sum(previous final segment frames + inserted silence frames) / R`. Carry the

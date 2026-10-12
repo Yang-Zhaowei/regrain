@@ -1,7 +1,7 @@
 # regrain
 
-Local-first, agent-friendly tools for turning caller-authored scripts into
-speech and subtitles. The v0.1.0 release candidate packages a lightweight
+Local-first speech production tools for rendering, reusing, replacing and aligning
+audio. The v0.2.0 candidate packages a lightweight
 Controller; PyTorch, `qwen-tts`, and `qwen-asr` stay in their existing runtime
 environments.
 
@@ -16,18 +16,24 @@ regrain --help
 regrain --version
 regrain speech validate speech.json
 regrain speech render speech.json --output new-run-dir
+regrain speech plan new-run-dir --output assembly.json
+regrain speech assemble assembly.json --output revised-run
+regrain speech align alignment.json --output recording-run
 ```
 
 `validate` checks the script without models or input changes. `render` uses Core's
 existing runtimes. The [CLI/input contract](docs/dev/render-entry-point.md) defines
-runtime settings, outputs and errors; [naming](docs/naming.md) defines retained
-`media_pipeline` imports, the `media-pipeline` alias and configuration compatibility.
+runtime settings, outputs and errors. [Speech production](docs/dev/speech-production.md)
+defines editable assembly and external audio inputs; [migration](docs/naming.md)
+explains the breaking switch to `regrain` imports and `REGRAIN_*` settings.
 
 ## Speech workflow
 
 ```text
 speech.json → validation → TTS → forced alignment → postprocess → captions
-            → WAV + SRT + timeline + report
+            → verified Units → assembly → WAV + SRT + timeline + report
+recording + exact transcript → forced alignment → verified Units → assembly
+existing Units + replacements + pauses → assembly (no model calls)
 ```
 
 On PC_Client, an Agent prepares `speech.json`, runs `regrain speech validate`,
@@ -43,14 +49,14 @@ host discovery is configured as described in the deployment guide.
 ## Release and deployment
 
 - [Client/Core deployment, verification, upgrade and rollback](docs/deployment.md)
-- [v0.1.0 release preparation and owner acceptance gates](docs/release.md)
+- [v0.2.0 release preparation and owner acceptance gates](docs/release.md)
 - [Project and package naming decisions](docs/naming.md)
 - [Current state](docs/CURRENT.md) and [roadmap](docs/ROADMAP.md)
 
 The repository is hosted at
-[Yang-Zhaowei/media-pipeline](https://github.com/Yang-Zhaowei/media-pipeline)
-while the owner prepares a repository rename to `regrain`. Existing PR and
-commit identities remain historical references.
+[Yang-Zhaowei/regrain](https://github.com/Yang-Zhaowei/regrain).
+Historical PR URLs, tested commit identities, old environments and verification
+artifacts are retained as evidence; this change performs no deployment.
 
 ## Existing production evidence
 
@@ -61,8 +67,17 @@ exact-artifact acceptance. CPU checks run separately from real GPU verification.
 
 ## Development
 
-Contributor and Agent guidance is in [AGENTS.md](AGENTS.md). For development,
-install an editable checkout with `python -m pip install -e .` or `uv sync`.
+Contributor and Agent guidance is in [AGENTS.md](AGENTS.md). In a development
+checkout, use `uv sync --python 3.12` and
+`uv run python scripts/run_tests.py fast` for daily CPU checks. For full
+CPU/GPU and exact-Wheel gates, see the
+[Fast/Full/GPU/Owner profiles](docs/dev/testing.md). Prepare release artifacts
+from a clean commit with the pinned
+`uv run --with hatchling==1.27.0 python scripts/prepare_release.py --output dist/FRESH_CANDIDATE`
+command in the [release guide](docs/release.md). Production Core installs the
+verified wheel in a separate versioned uv venv, not the development checkout.
+The [PR #18 review and measured performance](docs/validation/pr18-review-performance.md)
+record the current CPU evidence and its limits.
 
 ## License
 

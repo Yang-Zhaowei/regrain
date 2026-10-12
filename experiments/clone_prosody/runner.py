@@ -42,7 +42,7 @@ def run_condition(spec: dict, directory: Path, *, asset_loader=None, engine_fact
         from .runtime import ExperimentEngine, load_asset
         asset_loader = asset_loader or load_asset
         engine_factory = engine_factory or ExperimentEngine
-    from media_pipeline.postprocess import read_wav, write_wav
+    from regrain.postprocess import read_wav, write_wav
 
     report = {**spec["run"], "schema_version": 1, "status": "running", "started_at": now(),
               "runtime_paths": spec["runtime_paths"], "repository": spec["repository"],

@@ -21,12 +21,12 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline import CustomVoiceRequest, TTSArtifact
+from regrain import CustomVoiceRequest, TTSArtifact
 from typing import Any
 
-from media_pipeline.alignment import AlignmentArtifact, AlignmentRequest
-from media_pipeline.captions import AlignedToken, AlignmentMismatchError
-from media_pipeline.postprocess import read_wav, write_wav
+from regrain.alignment import AlignmentArtifact, AlignmentRequest
+from regrain.captions import AlignedToken, AlignmentMismatchError
+from regrain.postprocess import read_wav, write_wav
 
 from e2e_validation import (
     RunChainHooks,
@@ -128,7 +128,7 @@ class _FakeAlignerEngine:
 
 
 def _waveform_to_samples(waveform: list[float]) -> list[int]:
-    from media_pipeline.tts import waveform_to_mono_pcm16
+    from regrain.tts import waveform_to_mono_pcm16
 
     return waveform_to_mono_pcm16(waveform)
 
@@ -396,7 +396,7 @@ def test_emitted_srt_timestamp_past_final_wav_is_rejected() -> None:
     # A caption.end that is within the final WAV (float check passes) can still
     # round UP (ROUND_HALF_UP) to an emitted millisecond timestamp past the WAV.
     # The timing check must use the *emitted* timestamp, not the float caption.end.
-    from media_pipeline.captions import Caption
+    from regrain.captions import Caption
 
     from e2e_validation import E2EArtifacts, _srt_timing_consistent_with_final_wav
 

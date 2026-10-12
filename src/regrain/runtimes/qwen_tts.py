@@ -6,7 +6,7 @@ This is the ai-core GPU adapter for the TTS stage. It wraps the verified
 - the model loads once and the engine can synthesize many requests,
 - each request is one already-segmented utterance,
 - the output is written as mono 16-bit PCM WAV and reported as a
-  :class:`~media_pipeline.tts.TTSArtifact`.
+  :class:`~regrain.tts.TTSArtifact`.
 
 The heavy imports (``torch``, ``qwen_tts``) happen lazily inside
 :class:`Qwen3CustomVoiceTTS`, so merely importing this module does not require

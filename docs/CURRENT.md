@@ -49,7 +49,8 @@ identity/consistency, transitions and subtitle sync. See the [contract](dev/rend
 
 ## Current work
 
-PR #17 is in final closure for manual owner review, Ready status and merge.
+PR #17 is merged at `1176b9e5bf67b4959058af2b4a2e94bfc2453b24`, the
+baseline for the v0.2.0 production workflow candidate.
 [Historical CPU/package verification](validation/regrain-v0.1.0-candidate.md)
 and [owner GPU / Client Agent acceptance](validation/regrain-v0.1.0-owner-acceptance.md)
 are separate evidence. The latter applies only to original source `dbcf0db…`
@@ -59,11 +60,24 @@ and unattended Clone production quality was not established. Codex 6.1 Luna
 and Pi reported successful Clone authoring/static validation; Codex's initial
 failure was subprocess PATH discovery.
 
-The new documentation/Skill closure wheel and future merged release artifact
-need their own identities and [exact-artifact release acceptance](release.md).
-Application Python and tests are unchanged by closure. The agent has not rerun
-GPU inference or inspected raw Core evidence. No final release or repository
-rename is recorded; this closure performs no deployment.
+The v0.2.0 candidate consolidates imports/CLI/configuration under `regrain`, adds
+verified reusable speech Units and model-free editable assembly, and accepts
+recordings with exact transcripts through Forced Alignment. Final WAV/SRT/frame
+timeline and completion contracts remain compatible for revisual. See
+[production workflows](dev/speech-production.md), [migration](naming.md) and
+[verification](validation/speech-production-v0.2.md).
+
+PR #18's [independent review and measured CPU optimization](validation/pr18-review-performance.md)
+adds bounded Controller PCM processing, exact per-operation snapshot checks and
+atomic Final completion publication. CPU benchmark byte parity and test profiles
+do not establish model accuracy or ai-core acceptance; the new wheel has its own
+artifact identity and owner gates.
+
+New source/wheels require their own identities and [exact-artifact acceptance](release.md).
+Old GPU acceptance applies to its original artifact only. No v0.2 GPU inference,
+deployment, release or merge approval is claimed. Git origin now points at
+`Yang-Zhaowei/regrain`; this task did not administer that rename. Prior PR URLs
+and model environment paths remain historical evidence.
 
 [Issue #8](https://github.com/Yang-Zhaowei/media-pipeline/issues/8) remains open
 for production narration stability, including the accepted clone render's

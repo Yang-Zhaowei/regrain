@@ -35,6 +35,15 @@ regrain speech validate speech.json
 
 Use `regrain speech validate --help` for options. The default budget is 200; `--max-segment-chars` changes only this caller-side budget. Validation is static: it reads the script and checks its contract without loading models or clone assets, creating render output, or modifying the input.
 
+For an approved script that already has rendered units, use Regrain's production
+workflow to import and inspect unit artifacts, author a pause/replacement plan,
+and assemble a new run. For an existing recording, supply its exact transcript
+to the forced-alignment workflow; do not infer or repair spoken text with ASR.
+These operations require explicit caller authorization to generate, align,
+replace or assemble audio. See the
+[speech production guide](../../docs/dev/speech-production.md) for artifact
+validation, supported audio format and long-recording limits.
+
 The CLI prints a JSON result. Exit `0` with `status: "valid"` means preflight passed. Exit `3` with `status: "validation_failed"` includes the validation error; correct the source or request clarification, then rerun validation. Exit `2` indicates command usage or another CLI error. Keep the original error and do not claim validation passed after a failed run.
 
 After validation, obtain human approval of the exact script. Then manually transfer the approved script and its authorized relative voice asset (for clone) to the Core machine, preserving their directory relationship. Core supplies its existing TTS and alignment interpreters and checkpoints through local configuration; keep those paths and private assets out of `speech.json` and source control. Run `regrain speech render` there with a new output directory. Treat only `status: "complete"` as a completed render; `incomplete` or `failed` results do not publish a complete episode. Transfer outputs back manually. Regrain does not transfer files or require Revisual.

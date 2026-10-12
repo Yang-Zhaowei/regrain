@@ -1,5 +1,12 @@
 # Speech rendering
 
+This page records the existing render API and CLI. The package/import and
+configuration rename is a breaking change in v0.2.0: use only `regrain`,
+`python -m regrain`, and `REGRAIN_*`. See the [naming migration](../naming.md)
+for installation and rollback boundaries, and the
+[speech production workflow](speech-production.md) for artifact reuse,
+assembly and external-audio alignment.
+
 `render_speech(...)` turns a caller-authored script into one episode WAV, SRT
 and timeline. The caller defines coherent performance units and any explicit
 direction. A unit may contain multiple sentences; subtitle boundaries are
@@ -70,7 +77,7 @@ directory is not added to the worker's import path, which avoids exposing
 unrelated top-level packages to third-party imports.
 
 ```python
-from media_pipeline import render_speech
+from regrain import render_speech
 
 render_speech(
     script_path="script.json",
@@ -97,10 +104,12 @@ remain runtime configuration and do not belong in `speech.json`.
 A complete run publishes `final/final.wav`, `final/final.srt` and
 `final/timeline.json`. `request.json` preserves the authored instruction choices;
 `report.json` records their effective values and run status.
-Legacy provenance records `speaker`; clone provenance records the authored
-relative `voice` object without a fabricated speaker, resolved asset path,
-tensor payload, reference recording/transcript source, hash, or registry ID.
-Alignment, Postprocess, Caption Compiler, and final assembly are shared unchanged.
+Each successful unit has an immutable, hash-verified artifact manifest; render
+provenance records the voice choice, synthesis instruction, and hashes of raw
+audio/alignment inputs without embedding private tensors or clone assets.
+Alignment, Postprocess, Caption Compiler, and final assembly use the common
+speech artifact workflow described in the
+[production workflow](speech-production.md).
 
 Missing/malformed/rejected assets, incompatible checkpoints, Base load failure,
 and clone synthesis failure use the existing structured failed-run contract,
@@ -130,26 +139,37 @@ The renderer does not automatically split, interpret or rewrite the manuscript.
 
 ## Command line
 
-Install the versioned Controller wheel in its own environment, with no source
-checkout or PyPI lookup required. During development, use
-`python -m pip install -e .` or `uv sync`. The primary console command and
-distribution are named `regrain`; `media-pipeline` remains a thin compatibility
-alias. `--version` identifies the installed package version. The console
-command is a thin wrapper around `load_and_validate_script(...)` and
-`render_speech(...)`:
+Install the versioned `regrain` wheel in its own Core Controller environment
+(`uv venv` + `uv pip install`); for a development checkout use
+`uv sync --python 3.12` and `uv run regrain --help`. The direct installed
+`regrain` executable is preferred for production; it does not require
+`uv run`, checkout synchronization, or `PYTHONPATH`. `--version` identifies
+the installed package version. The console command wraps the public speech APIs:
 
 ```console
 regrain --help
 regrain --version
 regrain speech validate speech.json
 regrain speech render speech.json --output new-run-dir
+regrain speech import-run old-run --output imported-units-run
+regrain speech plan imported-units-run --output assembly.json
+regrain speech assemble assembly.json --output assembled-run
+regrain speech align alignment.json --output aligned-run
+python -m regrain --help
 ```
 
-Both command names use the same parser and behavior. Existing Python APIs,
-`MEDIA_PIPELINE_*` configuration variables and their precedence remain stable.
+Assembly plans and alignment request schemas are described in the
+[speech production guide](speech-production.md).
 
-Both commands accept `--max-segment-chars` (default `200`), the caller's
-preflight budget measured in Unicode code points. It is not a model limit.
+The former `media_pipeline` import, `media-pipeline` command, and
+`MEDIA_PIPELINE_*` / `MEDIA_ALIGNMENT_*` variables are retired. Migrate existing
+scripts and runtime configuration using the
+[breaking-change guide](../naming.md). Keep the v0.1.0 environment intact for
+rollback; do not move model or existing worker-environment directories.
+
+The `validate` and `render` commands accept `--max-segment-chars` (default
+`200`), the caller's preflight budget measured in Unicode code points. It is
+not a model limit.
 `validate` reads UTF-8 JSON and performs static preflight only: it does not load
 models, deserialize clone assets, import torch/qwen_tts, create a run directory,
 or modify the input. Clone asset existence, safe load, and checkpoint compatibility
@@ -160,11 +180,11 @@ order, id, text, `text_length` (Unicode code points, including whitespace and
 punctuation), `pause_after_ms`, `effective_instruct`, and `instruct_source`
 (`top_level` or `segment`).
 
-### Output and exit codes
+### Validate and render output and exit codes
 
 For results and handled errors, stdout contains one pretty-printed UTF-8 JSON
-object and stderr is empty. Every object has `schema_version: 1`, `command` (`validate`,
-`render`, or `null` for command-line usage errors), and a `status`. Absolute
+object and stderr is empty. Every object has `schema_version: 1`, `command`
+(`validate`, `render`, or `null` for command-line usage errors), and a `status`. Absolute
 paths are used for reported artifacts. `--help` prints ordinary human-readable
 help and exits `0`.
 
@@ -176,6 +196,9 @@ help and exits `0`.
 | `3` | `validation_failed` | Static preflight failed; `error` preserves the original message, including aggregated script errors. |
 | `4` | `incomplete` | Rendering returned incomplete; final WAV, SRT, and timeline paths are `null`, and `segments` carries each result's `segment_id`, `status`, `stage`, and `reason`. |
 | `5` | `failed` | A `RenderError` carries `run_dir`; includes a best-effort `report_path` (or `null` if absent) and null final artifact paths. |
+
+The production workflow commands report their own command names and path fields;
+see the [speech production guide](speech-production.md).
 
 Render result paths use the keys `run_dir`, `report_path`, `wav_path`, `srt_path`,
 and `timeline_path`. Errors include an `error` string. A failure to create the
@@ -191,17 +214,13 @@ for either status.
 The `render` command requires `--output <run_dir>` and delegates the new-directory
 check to the renderer. Its optional overrides are `--tts-python`,
 `--alignment-python`, `--tts-model`, and `--alignment-model`; they correspond to
-the `MEDIA_PIPELINE_TTS_PYTHON`, `MEDIA_PIPELINE_ALIGNMENT_PYTHON`,
-`MEDIA_PIPELINE_TTS_MODEL`, and `MEDIA_PIPELINE_ALIGNMENT_MODEL` environment
-variables. The existing `MEDIA_ALIGNMENT_PYTHON` and `MEDIA_ALIGNMENT_MODEL`
-names remain supported as aliases and take precedence over their canonical
-`MEDIA_PIPELINE_` variables when no CLI override is supplied. CLI values take
+the `REGRAIN_TTS_PYTHON`, `REGRAIN_ALIGNMENT_PYTHON`, `REGRAIN_TTS_MODEL`, and
+`REGRAIN_ALIGNMENT_MODEL` environment variables. CLI values take
 precedence over environment variables. Missing or whitespace-only values are
 rejected. Interpreter and model paths are supplied by the caller; the CLI does
 not infer or hard-code them. `--device` overrides the render device and defaults
 to `cuda:0`.
 
-The Python `render_speech(...)` API above remains available with its existing
-signature and semantics. The legacy caption command
-`python -m media_pipeline original.txt alignment.raw.json -o captions.srt`
-also remains unchanged; this console command is a separate entry point.
+The Python `regrain.render_speech(...)` API is the supported render entry point.
+The caption compiler CLI remains available as
+`regrain captions original.txt alignment.raw.json -o captions.srt`.

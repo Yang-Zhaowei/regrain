@@ -2,10 +2,10 @@
 
 This test runs the real model, so it is gated on a single condition only:
 
-- the model path must be provided via the ``MEDIA_PIPELINE_TTS_MODEL``
+- the model path must be provided via the ``REGRAIN_TTS_MODEL``
   environment variable (never hard-coded into the repository).
 
-Absence of ``MEDIA_PIPELINE_TTS_MODEL`` means GPU integration was not requested,
+Absence of ``REGRAIN_TTS_MODEL`` means GPU integration was not requested,
 so the tests skip. When it is set, integration is explicitly requested: a
 missing ``torch``/``qwen_tts``, a CUDA/model-load failure, or a synthesis
 failure must FAIL rather than skip, so this stays the real GPU validation
@@ -24,21 +24,21 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline import CustomVoiceRequest
-from media_pipeline.postprocess import read_wav
+from regrain import CustomVoiceRequest
+from regrain.postprocess import read_wav
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "speech-smoke-001"
 ORIGINAL_TEXT = FIXTURE / "original.txt"
 
-_MODEL_PATH = os.environ.get("MEDIA_PIPELINE_TTS_MODEL")
+_MODEL_PATH = os.environ.get("REGRAIN_TTS_MODEL")
 
-# Absence of MEDIA_PIPELINE_TTS_MODEL means integration was not requested: skip.
+# Absence of REGRAIN_TTS_MODEL means integration was not requested: skip.
 # When it is set, integration is explicitly requested, so missing torch/qwen_tts
 # or any model-load / CUDA / synthesis failure must FAIL, not skip.
 skip_integration = pytest.mark.skipif(
     not _MODEL_PATH,
     reason=(
-        "MEDIA_PIPELINE_TTS_MODEL is not set: GPU integration was not requested. "
+        "REGRAIN_TTS_MODEL is not set: GPU integration was not requested. "
         "When set, any torch/qwen_tts/model/synthesis failure fails the test."
     ),
 )
@@ -46,7 +46,7 @@ skip_integration = pytest.mark.skipif(
 
 @skip_integration
 def test_qwen3_custom_voice_synthesizes_mono_pcm16_artifact(tmp_path: Path) -> None:
-    from media_pipeline.runtimes.qwen_tts import Qwen3CustomVoiceTTS
+    from regrain.runtimes.qwen_tts import Qwen3CustomVoiceTTS
 
     text = ORIGINAL_TEXT.read_text(encoding="utf-8")
     model_path = Path(_MODEL_PATH)  # type: ignore[arg-type]
@@ -78,7 +78,7 @@ def test_qwen3_custom_voice_synthesizes_mono_pcm16_artifact(tmp_path: Path) -> N
 
 @skip_integration
 def test_engine_loads_model_once_and_synthesizes_twice(tmp_path: Path) -> None:
-    from media_pipeline.runtimes.qwen_tts import Qwen3CustomVoiceTTS
+    from regrain.runtimes.qwen_tts import Qwen3CustomVoiceTTS
 
     text = ORIGINAL_TEXT.read_text(encoding="utf-8")
     engine = Qwen3CustomVoiceTTS(Path(_MODEL_PATH))  # type: ignore[arg-type]

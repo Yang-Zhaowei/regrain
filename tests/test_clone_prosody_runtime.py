@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from experiments.clone_prosody.runtime import ExperimentEngine
-from media_pipeline.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS
+from regrain.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS
 from test_qwen_voice_clone import fake_runtime, fake_torch, make_asset  # noqa: F401
 
 

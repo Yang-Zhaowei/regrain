@@ -12,7 +12,7 @@ engine:
 
 The heavy imports (``torch``, ``qwen_asr``) happen lazily inside
 :meth:`Qwen3ForcedAlignment._load_aligner`, so merely importing this module (or
-the portable :mod:`media_pipeline.alignment` contracts) does not require torch,
+the portable :mod:`regrain.alignment` contracts) does not require torch,
 CUDA, or the model runtime.
 
 v0 is deliberately narrow: Qwen3 ForcedAligner only, ``torch.bfloat16``, and

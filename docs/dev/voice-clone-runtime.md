@@ -1,5 +1,9 @@
 # Qwen3-TTS Base voice-clone runtime v0
 
+Package/import and configuration names migrate in v0.2.0; see the
+[breaking-change guide](../naming.md) and the
+[speech production workflow](speech-production.md).
+
 [Issue #12](https://github.com/Yang-Zhaowei/media-pipeline/issues/12) adds a
 separate `Qwen3VoiceCloneTTS` adapter. Normal ICL uses a local mono PCM16 WAV
 and a caller-supplied exact transcript. One loaded Base engine creates a
@@ -36,8 +40,8 @@ upstream structure fails explicitly, without guessing missing information.
 ## Python interface and errors
 
 ```python
-from media_pipeline.voice_clone import VoiceCloneReference, VoiceCloneRequest
-from media_pipeline.runtimes.qwen_voice_clone import (
+from regrain.voice_clone import VoiceCloneReference, VoiceCloneRequest
+from regrain.runtimes.qwen_voice_clone import (
     Qwen3VoiceCloneTTS, load_voice_asset, save_voice_asset,
 )
 
@@ -126,12 +130,12 @@ On ai-core, check out the exact PR HEAD in a clean tree and use its existing
 TTS virtual environment. Set `PYTHONPATH` to that checkout's `src`, and supply
 the following caller-owned variables (absolute paths selected by the owner):
 
-- `MEDIA_PIPELINE_VOICE_CLONE_MODEL`: Base checkpoint directory.
-- `MEDIA_PIPELINE_VOICE_CLONE_REFERENCE`: mono PCM16 reference WAV.
-- `MEDIA_PIPELINE_VOICE_CLONE_TRANSCRIPT`: UTF-8 file with the exact transcript.
-- `MEDIA_PIPELINE_VOICE_CLONE_RUN`: a new output directory.
-- `MEDIA_PIPELINE_VOICE_CLONE_LANGUAGE`: explicit Qwen language.
-- `MEDIA_PIPELINE_VOICE_CLONE_TEXT_1` and `_TEXT_2`: two different utterances.
+- `REGRAIN_VOICE_CLONE_MODEL`: Base checkpoint directory.
+- `REGRAIN_VOICE_CLONE_REFERENCE`: mono PCM16 reference WAV.
+- `REGRAIN_VOICE_CLONE_TRANSCRIPT`: UTF-8 file with the exact transcript.
+- `REGRAIN_VOICE_CLONE_RUN`: a new output directory.
+- `REGRAIN_VOICE_CLONE_LANGUAGE`: explicit Qwen language.
+- `REGRAIN_VOICE_CLONE_TEXT_1` and `_TEXT_2`: two different utterances.
 
 First, exercise actual CPU serialization safety with already-installed torch:
 
@@ -145,15 +149,15 @@ Then create and save the real voice in process 1:
 python - <<'PY'
 import os
 from pathlib import Path
-from media_pipeline.voice_clone import VoiceCloneReference
-from media_pipeline.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, save_voice_asset
+from regrain.voice_clone import VoiceCloneReference
+from regrain.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, save_voice_asset
 
-run = Path(os.environ["MEDIA_PIPELINE_VOICE_CLONE_RUN"])
+run = Path(os.environ["REGRAIN_VOICE_CLONE_RUN"])
 run.mkdir(parents=True, exist_ok=False)
-engine = Qwen3VoiceCloneTTS(os.environ["MEDIA_PIPELINE_VOICE_CLONE_MODEL"])
-transcript = Path(os.environ["MEDIA_PIPELINE_VOICE_CLONE_TRANSCRIPT"]).read_text(encoding="utf-8")
+engine = Qwen3VoiceCloneTTS(os.environ["REGRAIN_VOICE_CLONE_MODEL"])
+transcript = Path(os.environ["REGRAIN_VOICE_CLONE_TRANSCRIPT"]).read_text(encoding="utf-8")
 asset = engine.create_voice_asset(VoiceCloneReference(
-    os.environ["MEDIA_PIPELINE_VOICE_CLONE_REFERENCE"], transcript,
+    os.environ["REGRAIN_VOICE_CLONE_REFERENCE"], transcript,
 ))
 save_voice_asset(asset, run / "voice.pt")
 print("Created", run / "voice.pt", asset.payload["model"])
@@ -167,19 +171,19 @@ both utterances without accessing the reference recording or transcript file:
 python - <<'PY'
 import json, os
 from pathlib import Path
-from media_pipeline.postprocess import read_wav
-from media_pipeline.voice_clone import VoiceCloneRequest
-from media_pipeline.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, load_voice_asset
+from regrain.postprocess import read_wav
+from regrain.voice_clone import VoiceCloneRequest
+from regrain.runtimes.qwen_voice_clone import Qwen3VoiceCloneTTS, load_voice_asset
 
-run = Path(os.environ["MEDIA_PIPELINE_VOICE_CLONE_RUN"])
+run = Path(os.environ["REGRAIN_VOICE_CLONE_RUN"])
 asset = load_voice_asset(run / "voice.pt")
-engine = Qwen3VoiceCloneTTS(os.environ["MEDIA_PIPELINE_VOICE_CLONE_MODEL"])
-texts = [os.environ[f"MEDIA_PIPELINE_VOICE_CLONE_TEXT_{i}"] for i in (1, 2)]
+engine = Qwen3VoiceCloneTTS(os.environ["REGRAIN_VOICE_CLONE_MODEL"])
+texts = [os.environ[f"REGRAIN_VOICE_CLONE_TEXT_{i}"] for i in (1, 2)]
 assert texts[0] != texts[1]
 records = []
 for i, text in enumerate(texts, 1):
     artifact = engine.synthesize(VoiceCloneRequest(
-        text, os.environ["MEDIA_PIPELINE_VOICE_CLONE_LANGUAGE"],
+        text, os.environ["REGRAIN_VOICE_CLONE_LANGUAGE"],
     ), asset, run / f"utterance-{i}.wav")
     samples, rate, frames = read_wav(artifact.wav_path)
     assert frames == artifact.frames == len(samples) and frames > 0

@@ -1,7 +1,7 @@
 """CPU unit tests for Production Alignment v0 (no models, no CUDA).
 
 These tests cover the portable contracts/validation in
-:mod:`media_pipeline.alignment` and the Qwen3 ForcedAligner runtime adapter's
+:mod:`regrain.alignment` and the Qwen3 ForcedAligner runtime adapter's
 mapping/validation logic using an injected fake aligner. They never import
 ``torch`` or ``qwen_asr``: the runtime imports those lazily, so a fake aligner
 can stand in for the real model on CPU.
@@ -23,25 +23,25 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
-    from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+    from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
 
 import pytest
 
-import media_pipeline
-from media_pipeline import (
+import regrain
+from regrain import (
     AlignmentArtifact,
     AlignmentMismatchError,
     AlignmentRequest,
     AlignmentRequestError,
     AlignmentRuntimeError,
 )
-from media_pipeline.alignment import (
+from regrain.alignment import (
     AlignmentError,
     validate_alignment,
     validate_request,
     validate_wav,
 )
-from media_pipeline.captions import (
+from regrain.captions import (
     AlignedToken,
     build_captions,
     compile_srt,
@@ -49,7 +49,7 @@ from media_pipeline.captions import (
     load_alignment,
     parse_alignment,
 )
-from media_pipeline.postprocess import read_wav, write_wav, postprocess_speech
+from regrain.postprocess import read_wav, write_wav, postprocess_speech
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "speech-smoke-001"
 FIXTURE_WAV = FIXTURE / "raw.wav"
@@ -75,7 +75,7 @@ def _isolate_runtime_imports() -> Iterator[None]:
     """Prevent these tests from leaking the Qwen3 runtime import into other files.
 
     Some tests here import :class:`Qwen3ForcedAlignment` (which registers
-    ``media_pipeline.runtimes`` in ``sys.modules``) while the TTS import
+    ``regrain.runtimes`` in ``sys.modules``) while the TTS import
     independence test asserts that package stays un-imported. Restoring
     ``sys.modules`` when this module finishes keeps the two test files from
     stepping on each other regardless of collection order.
@@ -85,8 +85,8 @@ def _isolate_runtime_imports() -> Iterator[None]:
         lambda: {
             name
             for name in sys.modules
-            if name == "media_pipeline.runtimes"
-            or name.startswith("media_pipeline.runtimes.")
+            if name == "regrain.runtimes"
+            or name.startswith("regrain.runtimes.")
         }
     )
     before = runtime_keys()
@@ -212,10 +212,10 @@ def _install_fake(monkeypatch, aligner: _FakeAligner, loader: _RecordingLoader) 
 
 def _import_runtime():
     # Imported lazily so merely collecting this test file does not register
-    # media_pipeline.runtimes in sys.modules and defeat the TTS import
+    # regrain.runtimes in sys.modules and defeat the TTS import
     # independence test. The annotation is a string (from __future__ import
     # annotations), so this runtime import does not break the type checker.
-    from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+    from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
     return Qwen3ForcedAlignment
 
 
@@ -228,9 +228,9 @@ def _engine(monkeypatch, aligner: _FakeAligner) -> "Qwen3ForcedAlignment":
 # --- portable boundary: importing must not load the runtime ----------------
 
 
-def test_importing_media_pipeline_does_not_pull_torch_or_qwen_asr() -> None:
-    import media_pipeline.alignment  # noqa: F401
-    import media_pipeline.runtimes.qwen_aligner  # noqa: F401
+def test_importing_regrain_does_not_pull_torch_or_qwen_asr() -> None:
+    import regrain.alignment  # noqa: F401
+    import regrain.runtimes.qwen_aligner  # noqa: F401
 
     assert "torch" not in sys.modules
     assert "qwen_asr" not in sys.modules
@@ -245,9 +245,9 @@ def test_alignment_runtime_import_independence_is_subprocess_stable() -> None:
     script = (
         "import sys"
         "; sys.path.insert(0, %r)"
-        "; import media_pipeline"
-        "; import media_pipeline.alignment"
-        "; import media_pipeline.runtimes.qwen_aligner"
+        "; import regrain"
+        "; import regrain.alignment"
+        "; import regrain.runtimes.qwen_aligner"
         "; bad = [m for m in ('torch', 'qwen_asr') if m in sys.modules]"
         "; raise SystemExit(1 if bad else 0)"
     ) % str(src)

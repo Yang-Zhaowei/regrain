@@ -4,18 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "regrain"
-version = "0.1.0"
+version = "0.2.0"
 description = "Small, local-first media processing tools for agents and people"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-regrain = "media_pipeline.cli:main"
-media-pipeline = "media_pipeline.cli:main"
+regrain = "regrain.cli:main"
 
 [project.urls]
-Repository = "https://github.com/Yang-Zhaowei/media-pipeline"
+Repository = "https://github.com/Yang-Zhaowei/regrain"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -24,12 +23,17 @@ dev = ["pytest>=8"]
 dev = ["pytest>=8"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/media_pipeline"]
+packages = ["src/regrain"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"skills/regrain-speech" = "media_pipeline/skills/regrain-speech"
+"skills/regrain-speech" = "regrain/skills/regrain-speech"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 addopts = "-q"
+markers = [
+    "fast: in-process CPU correctness and immutable regression checks",
+    "full: CPU process isolation, installed-wheel and optional real-torch checks",
+    "gpu: explicitly configured real model integration",
+]

@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.postprocess import read_wav
-from media_pipeline.render import (
+from regrain.postprocess import read_wav
+from regrain.render import (
     STATUS_COMPLETE,
     STATUS_FAILED,
     RenderError,
@@ -217,7 +217,7 @@ def guarded(name, *args, **kwargs):
         raise AssertionError("heavy dependency imported by static validation: " + name)
     return original(name, *args, **kwargs)
 builtins.__import__ = guarded
-from media_pipeline.render import load_and_validate_script
+from regrain.render import load_and_validate_script
 load_and_validate_script(sys.argv[1], max_segment_chars=100)
 assert "torch" not in sys.modules
 assert "qwen_tts" not in sys.modules
@@ -243,9 +243,9 @@ import json
 import sys
 import types
 from pathlib import Path
-from media_pipeline.postprocess import write_wav
-from media_pipeline.tts import TTSArtifact, TTSRuntimeError
-from media_pipeline.voice_clone import VoiceAssetError, VoiceCloneError, VoiceCloneRequest
+from regrain.postprocess import write_wav
+from regrain.tts import TTSArtifact, TTSRuntimeError
+from regrain.voice_clone import VoiceAssetError, VoiceCloneError, VoiceCloneRequest
 
 spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 run_dir = Path(spec["args"][1]["run_dir"])
@@ -293,12 +293,12 @@ class FakeBaseEngine:
             write_wav(output_path, [1200] * frames, 24000)
         return TTSArtifact(Path(output_path), 24000, 24000)
 
-module = types.ModuleType("media_pipeline.runtimes.qwen_voice_clone")
+module = types.ModuleType("regrain.runtimes.qwen_voice_clone")
 module.load_voice_asset = load_voice_asset
 module.Qwen3VoiceCloneTTS = FakeBaseEngine
 sys.modules[module.__name__] = module
 
-custom = types.ModuleType("media_pipeline.runtimes.qwen_tts")
+custom = types.ModuleType("regrain.runtimes.qwen_tts")
 class ForbiddenCustomEngine:
     def __init__(self, *args, **kwargs):
         raise AssertionError("clone scripts must not construct CustomVoice")
@@ -451,7 +451,8 @@ def test_clone_failures_preserve_structured_failed_render_and_original_reason(
         assert reason in manifest["runtime_error"]
         assert manifest["segments"] == []
     else:
-        assert manifest["runtime_error"] is None
+        assert "stage failed (exit 2)" in manifest["runtime_error"]
+        assert reason in manifest["runtime_error"]
         failed = manifest["segments"][-1]
         assert failed["status"] == "synthesis_failed"
         assert reason in failed["reason"]

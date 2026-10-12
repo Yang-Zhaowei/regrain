@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from media_pipeline.captions import (
+from regrain.captions import (
     AlignedToken,
     AlignmentError,
     AlignmentMismatchError,

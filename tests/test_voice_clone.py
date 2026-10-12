@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.voice_clone import (
+from regrain.voice_clone import (
     VoiceAssetError,
     VoiceCloneAsset,
     VoiceCloneError,
@@ -51,8 +51,8 @@ class BlockHeavy(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {{'torch', 'qwen_tts', 'numpy', 'soundfile'}}:
             raise AssertionError('heavy import attempted: ' + fullname)
 sys.meta_path.insert(0, BlockHeavy())
-import media_pipeline.voice_clone
-import media_pipeline.runtimes.qwen_voice_clone
+import regrain.voice_clone
+import regrain.runtimes.qwen_voice_clone
 assert not {{'torch', 'qwen_tts', 'numpy', 'soundfile'}}.intersection(sys.modules)
 """
     result = subprocess.run(

@@ -2,10 +2,10 @@
 
 This test runs the real model, so it is gated on a single condition only:
 
-- the model path must be provided via the ``MEDIA_PIPELINE_ALIGNMENT_MODEL``
+- the model path must be provided via the ``REGRAIN_ALIGNMENT_MODEL``
   environment variable (never hard-coded into the repository).
 
-Absence of ``MEDIA_PIPELINE_ALIGNMENT_MODEL`` means GPU integration was not
+Absence of ``REGRAIN_ALIGNMENT_MODEL`` means GPU integration was not
 requested, so the tests skip. When it is set, integration is explicitly
 requested: a missing ``torch``/``qwen_asr``, a CUDA/model-load failure, or an
 alignment failure must FAIL rather than skip, so this stays the real GPU
@@ -27,22 +27,22 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.alignment import AlignmentRequest, validate_wav
-from media_pipeline.postprocess import read_wav
+from regrain.alignment import AlignmentRequest, validate_wav
+from regrain.postprocess import read_wav
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "speech-smoke-001"
 FIXTURE_WAV = FIXTURE / "raw.wav"
 ORIGINAL_TEXT = FIXTURE / "original.txt"
 
-_MODEL_PATH = os.environ.get("MEDIA_PIPELINE_ALIGNMENT_MODEL")
+_MODEL_PATH = os.environ.get("REGRAIN_ALIGNMENT_MODEL")
 
-# Absence of MEDIA_PIPELINE_ALIGNMENT_MODEL means integration was not requested:
+# Absence of REGRAIN_ALIGNMENT_MODEL means integration was not requested:
 # skip. When it is set, integration is explicitly requested, so missing
 # torch/qwen_asr or any model-load / CUDA / alignment failure fails the test.
 skip_integration = pytest.mark.skipif(
     not _MODEL_PATH,
     reason=(
-        "MEDIA_PIPELINE_ALIGNMENT_MODEL is not set: GPU integration was not "
+        "REGRAIN_ALIGNMENT_MODEL is not set: GPU integration was not "
         "requested. When set, any torch/qwen_asr/model/alignment failure fails "
         "the test."
     ),
@@ -51,7 +51,7 @@ skip_integration = pytest.mark.skipif(
 
 @skip_integration
 def test_qwen3_forced_align_writes_consumable_json(tmp_path: Path) -> None:
-    from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+    from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
 
     engine = Qwen3ForcedAlignment(Path(_MODEL_PATH))  # type: ignore[arg-type]
 
@@ -92,7 +92,7 @@ def test_qwen3_forced_align_writes_consumable_json(tmp_path: Path) -> None:
 
 @skip_integration
 def test_engine_loads_model_once_and_aligns_twice(tmp_path: Path) -> None:
-    from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
+    from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
 
     engine = Qwen3ForcedAlignment(Path(_MODEL_PATH))  # type: ignore[arg-type]
 
@@ -116,9 +116,9 @@ def test_real_alignment_consumed_by_postprocess_and_captions(tmp_path: Path) -> 
     # fixture) satisfies the downstream production contracts. We do not compare
     # against alignment.raw.json -- we only require that the newly produced
     # alignment flows through Audio Postprocess and the Caption Compiler.
-    from media_pipeline.captions import build_captions, compile_srt, load_alignment
-    from media_pipeline.runtimes.qwen_aligner import Qwen3ForcedAlignment
-    from media_pipeline.postprocess import postprocess_speech
+    from regrain.captions import build_captions, compile_srt, load_alignment
+    from regrain.runtimes.qwen_aligner import Qwen3ForcedAlignment
+    from regrain.postprocess import postprocess_speech
 
     engine = Qwen3ForcedAlignment(Path(_MODEL_PATH))  # type: ignore[arg-type]
 

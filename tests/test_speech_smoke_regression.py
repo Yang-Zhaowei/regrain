@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.__main__ import main
-from media_pipeline.captions import (
+from regrain.captions_cli import main
+from regrain.captions import (
     DEFAULT_PAUSE_THRESHOLD,
     build_captions,
     compile_srt,

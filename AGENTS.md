@@ -1,10 +1,12 @@
 # regrain
 Local-first media processing toolkit. Preserve the naming and compatibility
-boundary in `docs/naming.md` and the speech contracts in `docs/dev/render-entry-point.md`.
+boundary in `docs/naming.md` and the speech contracts in `docs/dev/render-entry-point.md`
+and `docs/dev/speech-production.md`.
 ## Current state
 `docs/CURRENT.md` owns accepted capabilities, historical evidence and open problems.
-PR #17 is in final closure for owner review; its original candidate has owner-reported
-GPU/runtime and Client Agent acceptance. Clone consistency and Issue #8 remain open.
+PR #17 is merged; its original candidate has owner-reported GPU/runtime and Client
+Agent acceptance. v0.2.0 production workflows await their own ai-core acceptance.
+Clone consistency and Issue #8 remain open.
 Never transfer acceptance to a rebuilt wheel: use `docs/release.md` and its exact-artifact gates.
 The owner controls Ready status, merge, release, repository rename and deployment.
 Do not add new modalities, NLE integration, general orchestration, or other scope unless explicitly requested.

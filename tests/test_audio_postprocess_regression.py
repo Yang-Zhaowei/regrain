@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from media_pipeline.postprocess import (
+from regrain.postprocess import (
     DEFAULT_FADE_IN,
     DEFAULT_POST_PADDING,
     DEFAULT_PRE_PADDING,
@@ -182,7 +182,7 @@ def test_no_op_trim_preserves_full_frame_count(tmp_path: Path) -> None:
 
 
 def _alignment_tokens(raw: list[dict]):
-    from media_pipeline.captions import parse_alignment
+    from regrain.captions import parse_alignment
 
     return parse_alignment(raw)
 
