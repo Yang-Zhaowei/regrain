@@ -139,9 +139,12 @@ The renderer does not automatically split, interpret or rewrite the manuscript.
 
 ## Command line
 
-Install the versioned `regrain` wheel in its own environment. During development,
-use `python -m pip install -e .` or `uv sync`. `--version` identifies the
-installed package version. The console command wraps the public speech APIs:
+Install the versioned `regrain` wheel in its own Core Controller environment
+(`uv venv` + `uv pip install`); for a development checkout use
+`uv sync --python 3.12` and `uv run regrain --help`. The direct installed
+`regrain` executable is preferred for production; it does not require
+`uv run`, checkout synchronization, or `PYTHONPATH`. `--version` identifies
+the installed package version. The console command wraps the public speech APIs:
 
 ```console
 regrain --help
