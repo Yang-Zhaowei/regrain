@@ -86,6 +86,21 @@ versus the original full suite comes from explicit tier selection. The baseline
 had no Fast profile: its number is a retrospective comparison with identical
 selection rules.
 
+Full CPU on clean source `ba516b3caef67fbd65a64395d6ab3b9b803085a8` and its new
+exact wheel returned **844 passed, 6 skipped, 6 GPU cases deselected in 34.81
+seconds**. The wheel SHA256 was
+`4c4f37fe2044d1bde8c7561e79d937b8ebae43041324c519f5714a22664c032f`.
+Skips were three absent-Torch and three Windows symlink cases. The selected CPU
+checks retained installed CLI/examples and pinned worker dependency isolation;
+ordinary collection still finds all **856 cases** (previously 836).
+
+With uv available, installed Controller setup measured **0.50 seconds** versus
+the baseline's **7.12 seconds**. The no-uv fallback was separately forced and
+actually installed/tested the new wheel: **3 passed in 9.98 seconds**, with
+**6.05 seconds** of pip/venv setup. This fallback is not included in the optimized
+Full timing. The [portable test record](pr18-test-results.json) separates these
+single-run suite costs from the three-trial product benchmarks.
+
 No original case/parameter combination was deleted. Twenty additional cases
 cover streaming, malformed/truncated PCM, alias immutability, window/gap chunk
 boundaries, consumed-PCM races, caption overlap, symlink error translation and
@@ -99,7 +114,11 @@ The [profile guide](../dev/testing.md) distinguishes daily checks, exact wheel
 verification, configured GPU integration and manual Owner acceptance. Requesting
 GPU with absent settings was verified to fail before model dispatch. No GPU test
 was actually run. Final Full CPU results and exact candidate identity are also
-recorded in the Draft PR after its clean build.
+recorded in the Draft PR after its clean build. Documentation commits/rebuilt
+wheels have new identities and need their own installed-wheel checks. A local
+development `pytest.exe` uv trampoline failed path canonicalization even outside
+the sandbox; module-based pytest/profile runs and fresh installed-wheel CLI checks
+succeeded. This console-wrapper observation is not claimed as resolved.
 
 ## Product operation results
 

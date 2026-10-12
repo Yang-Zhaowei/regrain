@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "scope": "CPU test suite costs; no real model or GPU execution",
+  "method": "single serial pytest run per suite, wall time reported by pytest; excludes earlier permission-failed attempts",
+  "platform": "Windows 11",
+  "python": "3.12.14",
+  "baseline": {
+    "source_commit": "7d063da3a820ab3cc7818f7d291704dec6239dd5",
+    "wheel_sha256": "77df6a219d776085f3b35880b8b2bf24a644f4e6555ce63d050f16b538244902",
+    "full_all_collected": {
+      "passed": 825,
+      "skipped": 11,
+      "wall_seconds": 47.01,
+      "skip_categories": {"unconfigured_gpu": 6, "absent_torch": 3, "windows_symlink_privilege": 2},
+      "installed_controller_setup_seconds": 7.12,
+      "packaging_setup_and_cases_seconds": 10.632
+    },
+    "retrospective_fast_with_same_registry": {
+      "passed": 783,
+      "skipped": 2,
+      "deselected": 51,
+      "wall_seconds": 19.74
+    }
+  },
+  "revised": {
+    "production_source_tree_sha256": "e3043633c2706ef6090ad042a3caf605e26e25ffc14fd07ec2127d434817ff37",
+    "fast_before_clean_commit": {
+      "passed": 802,
+      "skipped": 3,
+      "deselected": 51,
+      "wall_seconds": 18.12
+    },
+    "full_cpu": {
+      "source_commit": "ba516b3caef67fbd65a64395d6ab3b9b803085a8",
+      "wheel_sha256": "4c4f37fe2044d1bde8c7561e79d937b8ebae43041324c519f5714a22664c032f",
+      "passed": 844,
+      "skipped": 6,
+      "deselected_gpu": 6,
+      "wall_seconds": 34.81,
+      "skip_categories": {"absent_torch": 3, "windows_symlink_privilege": 3},
+      "installed_controller_setup_seconds": 0.50,
+      "optional_uv_installer_used": true
+    },
+    "forced_no_uv_packaging_fallback": {
+      "passed": 3,
+      "wall_seconds": 9.98,
+      "pip_venv_setup_seconds": 6.05,
+      "included_in_full_cpu_timing": false
+    },
+    "all_cases_collected": 856,
+    "original_cases_removed": 0,
+    "new_cases_added": 20,
+    "gpu_requested_without_configuration": "rejected before model dispatch",
+    "stale_baseline_candidate": "rejected because source_commit differs from current HEAD",
+    "local_development_pytest_console": "uv trampoline failed path canonicalization; module/profile and isolated installed CLI checks succeeded"
+  },
+  "acceptance": "CPU evidence only; exact final wheel GPU, listening and consumer runtime acceptance remain Owner work"
+}
