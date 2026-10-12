@@ -1,86 +1,30 @@
 # Roadmap
 
-Status: planning / non-binding.
-
-`docs/CURRENT.md` defines current work.
-`AGENTS.md` defines agent scope.
+Status: planning / non-binding. [CURRENT](CURRENT.md) owns implemented
+capabilities, acceptance boundaries and open problems; [AGENTS](../AGENTS.md)
+defines agent scope. Milestone history and exact evidence live in CURRENT and
+its linked validation records rather than a second status list here.
 
 ## Project role
 
-regrain provides small, local-first, verifiable media operations
-only where real production workflows expose a concrete gap not adequately
-served by existing tools.
+regrain provides small, local-first, verifiable media operations where a real
+production workflow exposes a gap not adequately served by existing tools.
+It reuses complete capabilities first and builds only the demonstrated remainder,
+stopping once the gap is closed. It is not a mandatory execution/evidence layer,
+complete NLE, media framework, workflow engine or Agent control platform.
 
-It is not intended to become a complete NLE, media framework, workflow
-engine, or Agent control platform.
+## Next decisions: artifact acceptance and production evaluation
 
-It is not a mandatory execution or evidence layer for every media
-operation. It reuses complete existing capabilities first, and adapts or
-builds only the remaining demonstrated gap, stopping once the gap is
-closed.
+PR #18's speech production workflows are merged and the owner reported successful
+real workflow use. Exact-wheel acceptance for merged source remains a separate
+[release gate](release.md); revisual integration is deferred. These are
+verification/owner decisions, not a mandate for new development.
 
-## Completed milestones
-
-Speech Pipeline v0 closed on 2026-09-29 via PR #5 and human acceptance.
-See [recorded evidence](validation/speech-v0-closure.md).
-
-text
-→ TTS
-→ forced alignment
-→ audio postprocess
-→ caption compiler
-→ WAV + SRT
-
-Met stopping condition:
-
-A supported production utterance runs through the complete production
-path on ai-core and produces validated final WAV and SRT artifacts.
-Listening and synchronization are checked, and CPU regressions remain green.
-
-No new modality, invocation surface, NLE integration, or orchestration
-is required to close this milestone.
-
-The agent-facing speech CLI is complete via
-[PR #11](https://github.com/Yang-Zhaowei/media-pipeline/pull/11), merged on
-2026-10-03, closing
-[Issue #10](https://github.com/Yang-Zhaowei/media-pipeline/issues/10).
-It exposes static validation and the existing speech renderer; see the
-[CLI contract](dev/render-entry-point.md#command-line).
-
-Reusable Qwen3-TTS Base normal-ICL voice cloning is complete via
-[PR #13](https://github.com/Yang-Zhaowei/media-pipeline/pull/13), merged on
-2026-10-04, closing
-[Issue #12](https://github.com/Yang-Zhaowei/media-pipeline/issues/12).
-The owner accepted real asset creation, fresh-process reuse, two utterance
-outputs, and human voice identity / consistency. See the
-[closure evidence](validation/voice-clone-closure.md).
-
-Segmented clone rendering is complete via
-[PR #15](https://github.com/Yang-Zhaowei/media-pipeline/pull/15), closing Issue #14.
-Real three-unit ai-core rendering and human acceptance passed; see the
-[evidence](validation/clone-render-acceptance.md). Remaining emotion/delivery
-stability is tracked in Issue #8.
-
-The v0.2.0 production-workflow evolution adds reusable unit artifacts,
-revision-based audio assembly and forced alignment for caller-provided audio
-and exact transcripts. Its active contracts and limits are documented in the
-[speech production guide](dev/speech-production.md). New real-GPU acceptance is
-artifact-specific; the merged [PR #17](https://github.com/Yang-Zhaowei/media-pipeline/pull/17)
-and its v0.1.0 evidence remain historical.
-
-## Next gate: real workflow evaluation
-
-Speech Pipeline v0 is complete. Stop speculative feature development and
-evaluate the owner's [podcast workflow](workflows/podcast-pilot.md).
-
-Use regrain in one real short-form production with:
-
-- one actual finishing tool (FFmpeg or a target NLE, as requested by the owner);
-- one actual Agent host;
-- real source media;
-- narration and captions;
-- at least one revision;
-- final export.
+Continue evaluating the owner's [podcast workflow](workflows/podcast-pilot.md)
+with existing tools. A useful pilot has one actual finishing tool and Agent host,
+real source media, narration/captions, at least one revision and a reviewed final
+export. Evaluate long-form delivery under [Issue #8](https://github.com/Yang-Zhaowei/regrain/issues/8)
+without assuming a root cause or universal optimal unit length.
 
 Try existing capabilities first:
 
@@ -88,14 +32,11 @@ Try existing capabilities first:
 2. official APIs / extensions;
 3. maintained integrations / plugins;
 4. established tools and standards;
-5. regrain custom code only for the remaining demonstrated gap.
+5. regrain code for the remaining demonstrated gap.
 
-The evaluation ends with either:
-
-- no additional development is needed; or
-- one reproducible capability gap is identified.
-
-Both outcomes are successful.
+The evaluation ends when either no additional development is needed or one
+reproducible capability gap is identified. Both outcomes are successful.
+Downstream integration work needs its own owner authorization.
 
 ## Feature admission rule
 
@@ -111,29 +52,18 @@ A new feature requires:
 "Could be useful", "fits the architecture", and "might be needed by an
 Agent later" are not sufficient reasons.
 
-Reproducibility means the path runs and its checks are repeatable; model
-stages are not required to produce byte-identical output. Determinism is
-reserved for input rules, timing, format conversion, and verification.
+Reproducibility means the path runs and its checks are repeatable; model stages
+need not produce byte-identical output. Determinism is reserved for input rules,
+timing, format conversion and verification.
 
 ## Uncommitted questions
 
-These are not roadmap milestones:
-
-- media inspection/extraction;
-- ASR;
-- Vision / media search;
-- timeline interchange;
-- NLE integration;
-- MCP / HTTP;
-- orchestration.
-
-Each must first pass the Feature admission rule with reproducible evidence
-before any project code. Vision and ASR remain un-proposed until a real
-case re-enters this gate.
+Media inspection/extraction, ASR, Vision/media search, timeline interchange,
+NLE integration, MCP/HTTP and orchestration are not roadmap milestones. Each
+must pass the admission rule before any project code. Vision and ASR remain
+un-proposed until a real case re-enters that gate.
 
 ## Long-term success
 
-Success does not require the project to grow.
-
-A small, reliable Speech tool that remains useful beside existing NLEs and
-Agent integrations is a valid long-term outcome.
+Success does not require the project to grow. A small, reliable speech tool that
+remains useful beside existing NLEs and Agent integrations is a valid outcome.

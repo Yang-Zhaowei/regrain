@@ -3,8 +3,10 @@
 Review baseline: PR #18 HEAD was re-confirmed as
 `7d063da3a820ab3cc7818f7d291704dec6239dd5` before changes. All measurements below
 use that archived source or the revised source fingerprint recorded in the
-[machine-readable results](pr18-performance-results.json). This remains a Draft
-candidate. No ai-core inference, owner listening, release or deployment ran.
+[machine-readable results](pr18-performance-results.json). PR #18 was a Draft
+candidate during this review. No ai-core inference, owner listening, release or
+deployment ran as part of these measurements. PR #18 is now merged;
+[CURRENT](../CURRENT.md) owns status and links the separate owner workflow record.
 
 ## Findings and disposition
 

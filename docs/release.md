@@ -1,11 +1,12 @@
-# v0.2.0 production-workflow candidate
+# v0.2.0 build identity and release gates
 
-The [merged PR #17](https://github.com/Yang-Zhaowei/media-pipeline/pull/17) is
-the v0.1.0 predecessor and its owner acceptance remains
-historical evidence for that exact candidate only. It does not accept this
-v0.2.0 candidate, its new workflow behavior, or any rebuilt wheel. The owner
-controls review, merge, tagging, release and deployment. Keep the pull request
-in Draft until the owner completes review.
+This guide owns build identity and exact-artifact acceptance, not current project
+status. [PR #18](https://github.com/Yang-Zhaowei/regrain/pull/18) is merged;
+[CURRENT](CURRENT.md) records owner workflow observations and remaining gates.
+The [PR #17](https://github.com/Yang-Zhaowei/media-pipeline/pull/17) v0.1.0
+acceptance remains historical evidence for its original candidate only. Neither
+merge nor earlier workflow success accepts a rebuilt wheel. The owner controls
+review, Ready status, merge, tagging, release and deployment.
 
 The [naming migration](naming.md) is a breaking change. Use the
 [production workflow guide](dev/speech-production.md) for the current artifact,
@@ -39,21 +40,9 @@ same clean commit locally.
 The wheel contains the `regrain` package, runtime adapters, production Skill and
 examples. Experiments, checkpoints and private assets are not shipped.
 
-## Verification before owner review
+## CPU verification before owner review
 
-```powershell
-uv run python -m pytest -o addopts=-ra -q
-$env:REGRAIN_TEST_WHEEL = (Resolve-Path ./dist/REPLACE_WITH_FRESH_ARTIFACT_DIRECTORY/regrain-0.2.0-py3-none-any.whl).Path
-uv run python -m pytest tests/test_packaging.py -o addopts=-ra -q
-git diff --check
-```
-
-For the **exact Wheel + Manifest** gate, prefer the `uv run python
-scripts/run_tests.py full --wheel ... --manifest ...` command in the
-[testing guide](dev/testing.md); plain pytest with `REGRAIN_TEST_WHEEL`
-alone does not verify the candidate's source commit/tree and file digest.
-
-For daily work and exact-candidate CPU verification, use the
+Use the commands in the
 [Fast/Full/GPU/Owner profiles](dev/testing.md). `scripts/run_tests.py full` requires
 both the clean current commit's wheel and its manifest, validates source/tree/
 file identity, and includes real offline installed-wheel checks. Ordinary pytest
@@ -61,7 +50,8 @@ remains available without that gate; skipped wheel cases are not installation
 acceptance. The GPU profile fails on missing configuration and remains separate
 from CPU checks and owner listening.
 
-Set `REGRAIN_TEST_WHEEL` equivalently on other shells. Without it, installed-wheel
+Plain pytest with `REGRAIN_TEST_WHEEL` alone does not verify source commit/tree
+and file digest. Without that setting, installed-wheel
 tests explicitly skip rather than building or downloading during a unit test
 run. They inspect packaging, validate shipped examples and exercise installed
 CLI and isolated CPU workers outside the checkout. CPU tests and real GPU
@@ -70,17 +60,17 @@ when available. Do not change immutable fixtures.
 
 ## Exact-artifact acceptance and release
 
-1. Review the complete Draft PR, including package, CLI, configuration,
-   artifacts, migration steps, tests and known limits. Leave readiness and merge
-   to the owner. PR #17 is historical context only; preserve its original
-   evidence and SHA without transferring acceptance.
+1. Review the selected candidate's package, CLI, configuration, artifacts,
+   migration steps, verification and known limits. Any new PR stays Draft until
+   the owner decides readiness and merge. Preserve prior evidence and SHAs
+   without transferring acceptance to this candidate.
 2. From the exact clean candidate source, build a new wheel and manifest using
    the pinned uv command above, and record source commit, tree and wheel SHA256.
    A documentation-only commit also changes candidate identity. If the owner
    builds again after merge, the merged source commit is a new artifact identity
    and requires its own gate. Keep the prior v0.1.0 wheel and installation
    intact for rollback.
-3. Follow [deployment verification](deployment.md#owner-only-core-candidate-installation)
+3. Follow [deployment verification](deployment.md#owner-only-core-candidate-installation-uv)
    for that exact v0.2.0 wheel. On ai-core, verify installed CLI validation,
    render, reusable artifact assembly, replacement audio, and external-audio
    alignment with real runtime assets. Confirm output WAV/SRT/timeline, input

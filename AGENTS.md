@@ -1,24 +1,46 @@
 # regrain
-Local-first media processing toolkit. Preserve the naming and compatibility
-boundary in `docs/naming.md` and the speech contracts in `docs/dev/render-entry-point.md`
-and `docs/dev/speech-production.md`.
-## Current state
-`docs/CURRENT.md` owns accepted capabilities, historical evidence and open problems.
-PR #17 is merged; its original candidate has owner-reported GPU/runtime and Client
-Agent acceptance. v0.2.0 production workflows await their own ai-core acceptance.
-Clone consistency and Issue #8 remain open.
-Never transfer acceptance to a rebuilt wheel: use `docs/release.md` and its exact-artifact gates.
+
+Local-first speech production toolkit. Read [current state](docs/CURRENT.md)
+first; it owns capability status, open problems and the evidence index. Do not
+infer release acceptance from merged code or owner workflow observations.
+
+## Read only what the task needs
+
+| Task | Authority |
+| --- | --- |
+| Imports, CLI/configuration migration, consumer compatibility | [Naming](docs/naming.md) |
+| Speech inputs, renderer and CLI behavior | [Render contract](docs/dev/render-entry-point.md) |
+| Units, assembly, external alignment and recovery | [Production contract](docs/dev/speech-production.md) |
+| Development checks and test profiles | [Testing](docs/dev/testing.md) |
+| Build identity and exact-artifact acceptance | [Release gates](docs/release.md) |
+| Client/Core installation, runtime configuration and rollback | [Deployment](docs/deployment.md) |
+| Future scope and feature admission | [Roadmap](docs/ROADMAP.md) (non-binding) |
+
+`docs/validation/` preserves dated results and exact SHAs; those records do not
+define current scope. [GPU Worker environment notes](docs/dev/core-runtime.md)
+record host-specific evidence, not portable defaults or a fresh inventory.
+`docs/contracts/` retains detailed speech rules linked from the active guides.
+`docs/prompts/` and `docs/legacy/` are historical task/architecture material.
+
+## Boundaries
+
+Preserve the naming, speech and downstream artifact contracts. Never transfer
+acceptance to a rebuilt wheel; use the release guide's exact-artifact gates.
 The owner controls Ready status, merge, release, repository rename and deployment.
 Do not add new modalities, NLE integration, general orchestration, or other scope unless explicitly requested.
-## Repository evidence
+
+Keep the uv development checkout, invocation-scoped build tools, Client `uv tool`
+installation, versioned Core Controller and existing GPU Worker environments
+separate. Follow the testing, release and deployment guides for their commands.
+
+## Repository evidence and authoring
+
 - `experiments/`: previously working GPU smoke tests; reference only.
 - `tests/fixtures/`: immutable real model outputs used for regression tests.
-- `docs/dev/core-runtime.md`: currently verified ai-core GPU environment.
-- `docs/validation/regrain-v0.1.0-owner-acceptance.md`: original candidate owner evidence and limits.
-- `docs/deployment.md`, `docs/release.md`: installation/rollback and release procedures.
 - `skills/regrain-speech/`: reusable Agent Skill for authoring and validating speech inputs.
-- `docs/legacy/`: historical architecture; not current requirements.
+
 ## Rules
+
 - Prefer deterministic processing over LLM decisions.
 - Pure logic and unit tests must run without CUDA.
 - Keep paths portable across Windows, Linux, and macOS.
@@ -26,9 +48,13 @@ Do not add new modalities, NLE integration, general orchestration, or other scop
 - Separate pure processing from model/runtime integration.
 - Do not modify regression fixtures unless explicitly requested.
 - Avoid speculative abstractions and unnecessary dependencies.
+
 ## Out of scope for now
+
 HTTP API, MCP, ASR workflow, Vision, NLE automation, deployment automation, job queues, and UI.
+
 ## Validation
+
 Before finishing a change:
 - run relevant tests;
 - report tests actually executed;
