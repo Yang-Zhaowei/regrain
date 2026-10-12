@@ -14,12 +14,19 @@ worker-environment paths remain unchanged.
 
 ## Build and identify
 
-From a clean, committed checkout, create a separate build environment (Python
-3.10+), install `hatchling==1.27.0`, and run:
+From a clean, committed checkout, use uv to provide the pinned build backend
+for this invocation (Python 3.10+, recommended 3.12). No persistent build
+venv or manually installed `hatchling` is required:
 
 ```console
-python scripts/prepare_release.py --output dist/REPLACE_WITH_FRESH_ARTIFACT_DIRECTORY
+uv run --with hatchling==1.27.0 python scripts/prepare_release.py --output dist/REPLACE_WITH_FRESH_ARTIFACT_DIRECTORY
 ```
+
+Run from the repository root after `uv sync --python 3.12`. The repository's
+tracked `uv.lock` should remain unchanged; verify `git status --short` before
+building. `--with` supplies Hatchling for the build invocation, including the
+builder subprocess. The command may resolve/download its pinned build tools on
+first use; subsequent invocations normally reuse uv's cache.
 
 The script refuses dirty source and existing artifact names, uses the commit
 timestamp, checks package/distribution version agreement, and produces the
@@ -35,11 +42,16 @@ examples. Experiments, checkpoints and private assets are not shipped.
 ## Verification before owner review
 
 ```powershell
-.venv/Scripts/python.exe -m pytest -o addopts=-ra -q
+uv run python -m pytest -o addopts=-ra -q
 $env:REGRAIN_TEST_WHEEL = (Resolve-Path ./dist/REPLACE_WITH_FRESH_ARTIFACT_DIRECTORY/regrain-0.2.0-py3-none-any.whl).Path
-.venv/Scripts/python.exe -m pytest tests/test_packaging.py -o addopts=-ra -q
+uv run python -m pytest tests/test_packaging.py -o addopts=-ra -q
 git diff --check
 ```
+
+For the **exact Wheel + Manifest** gate, prefer the `uv run python
+scripts/run_tests.py full --wheel ... --manifest ...` command in the
+[testing guide](dev/testing.md); plain pytest with `REGRAIN_TEST_WHEEL`
+alone does not verify the candidate's source commit/tree and file digest.
 
 For daily work and exact-candidate CPU verification, use the
 [Fast/Full/GPU/Owner profiles](dev/testing.md). `scripts/run_tests.py full` requires
@@ -62,10 +74,12 @@ when available. Do not change immutable fixtures.
    artifacts, migration steps, tests and known limits. Leave readiness and merge
    to the owner. PR #17 is historical context only; preserve its original
    evidence and SHA without transferring acceptance.
-2. After the intended source is accepted and merged by the owner, build the
-   exact clean source into a new wheel and manifest. Record that source commit,
-   wheel SHA256 and manifest as a new candidate identity. Keep the prior
-   v0.1.0 wheel and installation intact for rollback.
+2. From the exact clean candidate source, build a new wheel and manifest using
+   the pinned uv command above, and record source commit, tree and wheel SHA256.
+   A documentation-only commit also changes candidate identity. If the owner
+   builds again after merge, the merged source commit is a new artifact identity
+   and requires its own gate. Keep the prior v0.1.0 wheel and installation
+   intact for rollback.
 3. Follow [deployment verification](deployment.md#owner-only-core-candidate-installation)
    for that exact v0.2.0 wheel. On ai-core, verify installed CLI validation,
    render, reusable artifact assembly, replacement audio, and external-audio
