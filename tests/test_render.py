@@ -652,6 +652,40 @@ def test_existing_output_directory_is_refused(tmp_path: Path) -> None:
     assert FakeAlignerEngine.loads == 0
 
 
+def test_relative_output_path_keeps_unit_manifest_paths_relative_to_run(tmp_path: Path, monkeypatch) -> None:
+    """Regression: relative CLI output must not mix absolute Unit and relative run paths."""
+
+    from regrain.production import create_assembly_plan
+
+    script = _write_script(tmp_path, [
+        _seg("opening_01", "第一段旁白。"),
+        _seg("next_02", "第二段旁白。"),
+    ])
+    monkeypatch.chdir(tmp_path)
+    relative_run = Path("runs") / "relative-render"
+    result = render_speech(
+        script.name, relative_run,
+        tts_python="python", alignment_python="python",
+        tts_model="/m", alignment_model="/m", max_segment_chars=100,
+        _wav_task=FakeTTSEngine(), _align_task=FakeAlignerEngine(),
+    )
+    assert result.status == STATUS_COMPLETE
+    assert result.run_dir == (tmp_path / relative_run)
+    assert (result.run_dir / "final" / ".complete").read_text(encoding="utf-8") == "complete"
+    report = json.loads((result.run_dir / "report.json").read_text(encoding="utf-8"))
+    assert [entry["status"] for entry in report["segments"]] == ["ok", "ok"]
+    for entry in report["segments"]:
+        assert entry["unit_manifest"].startswith("units/")
+        assert not Path(entry["unit_manifest"]).is_absolute()
+        assert (result.run_dir / entry["unit_manifest"]).is_file()
+
+    plan = create_assembly_plan(relative_run, Path("relative-plan.json"))
+    payload = json.loads(plan.read_text(encoding="utf-8"))
+    assert len(payload["units"]) == 2
+    for item in payload["units"]:
+        assert (plan.parent / item["artifact"]).is_file()
+
+
 def test_output_directory_must_not_equal_input(tmp_path: Path) -> None:
     # The script lives inside a directory; rendering into that same directory
     # would overwrite the input and must be refused by the existence check.
