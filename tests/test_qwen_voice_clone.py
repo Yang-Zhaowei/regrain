@@ -322,6 +322,61 @@ def test_persistence_failure_is_translated(fake_torch, monkeypatch, tmp_path) ->
         runtime.load_voice_asset(tmp_path / "missing.pt")
 
 
+@pytest.mark.parametrize("existing", [False, True], ids=["new", "overwrite"])
+@pytest.mark.parametrize("stage", ["serialization", "publication"])
+def test_failed_save_preserves_destination_and_cleans_staging(fake_torch, monkeypatch, tmp_path, existing, stage) -> None:
+    path = tmp_path / "voice.pt"
+    if existing:
+        runtime.save_voice_asset(make_asset(), path)
+    original = path.read_bytes() if existing else None
+
+    def fail_save(payload, destination):
+        Path(destination).write_bytes(b"partial asset")
+        raise OSError("injected serialization failure")
+
+    def fail_replace(source, destination):
+        raise OSError("injected publication failure")
+
+    if stage == "serialization":
+        monkeypatch.setattr(fake_torch, "save", fail_save)
+    else:
+        monkeypatch.setattr("os.replace", fail_replace)
+
+    replacement = make_asset()
+    replacement.payload["items"][0]["ref_text"] = "Replacement transcript."
+    with pytest.raises(VoiceAssetError, match=f"injected {stage} failure"):
+        runtime.save_voice_asset(replacement, path)
+    if existing:
+        assert path.read_bytes() == original
+        assert runtime.load_voice_asset(path).payload["items"][0]["ref_text"] == "  The exact transcript.\n"
+    else:
+        assert not path.exists()
+    assert list(tmp_path.iterdir()) == ([path] if existing else [])
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["new", "overwrite"])
+def test_save_publishes_only_after_serialization_finishes(fake_torch, monkeypatch, tmp_path, existing) -> None:
+    path = tmp_path / "voice.pt"
+    if existing:
+        runtime.save_voice_asset(make_asset(), path)
+    original = path.read_bytes() if existing else None
+    serialize = fake_torch.save
+
+    def observe_save(payload, destination):
+        serialize(payload, destination)
+        if existing:
+            assert path.read_bytes() == original
+        else:
+            assert not path.exists()
+
+    monkeypatch.setattr(fake_torch, "save", observe_save)
+    replacement = make_asset()
+    replacement.payload["items"][0]["ref_text"] = "Replacement transcript."
+    runtime.save_voice_asset(replacement, path)
+    assert runtime.load_voice_asset(path).payload["items"][0]["ref_text"] == "Replacement transcript."
+    assert list(tmp_path.iterdir()) == [path]
+
+
 def test_persistence_requires_torch_only_when_called(monkeypatch, tmp_path) -> None:
     monkeypatch.setitem(sys.modules, "torch", None)
     with pytest.raises(VoiceAssetError, match="requires torch"):

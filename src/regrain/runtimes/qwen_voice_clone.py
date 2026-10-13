@@ -7,6 +7,8 @@ does not need qwen_tts, CUDA, a checkpoint, or the original reference WAV.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from dataclasses import fields
 from pathlib import Path
 
@@ -75,15 +77,32 @@ def _cpu_payload(asset: VoiceCloneAsset, torch) -> dict:
 
 
 def save_voice_asset(asset: VoiceCloneAsset, path: str | Path) -> None:
-    """Save only validated primitives and CPU tensors, without source paths."""
+    """Atomically save validated primitives and CPU tensors, without source paths."""
     torch = _asset_torch()
+    temporary: Path | None = None
     try:
         payload = _cpu_payload(asset, torch)
-        torch.save(payload, Path(path))
+        destination = Path(path)
+        with tempfile.NamedTemporaryFile(
+            mode="wb", prefix=".regrain-voice-", suffix=".tmp",
+            dir=destination.parent, delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+        # Close the staging handle before torch reopens it, including on Windows.
+        torch.save(payload, temporary)
+        os.replace(temporary, destination)
+        temporary = None
     except VoiceAssetError:
         raise
     except Exception as exc:
         raise VoiceAssetError(f"failed to save voice asset: {exc}") from exc
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                # A cleanup failure must not hide the original save error.
+                pass
 
 
 def load_voice_asset(path: str | Path) -> VoiceCloneAsset:
