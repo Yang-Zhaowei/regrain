@@ -59,6 +59,9 @@ contract, not a Regrain Python/CLI alias. Keep that tag when importing Regrain
 speech into revisual: its [schema at reviewed commit 8f4f6a6](https://github.com/Yang-Zhaowei/revisual/blob/8f4f6a654e76fa78fb2700a8d6fb38db79eee8c7/src/domain/schema.ts)
 accepts `internal` and `media-pipeline`. Changing the tag to `regrain` would require
 a separately authorized consumer migration. This review changed no downstream code.
+Regrain and Revisual evolve independently. Revisual integration remains deferred
+and does not block Regrain's own release readiness; stable exchange compatibility
+is preserved without making that consumer a Controller dependency.
 
 Active code and replay tools use new names. Historical contracts, immutable
 fixtures, owner evidence, PR URLs and physical runtime paths keep actual names.

@@ -40,6 +40,8 @@ and Final byte parity are recorded in the [CPU review](pr18-review-performance.m
 but actual mixed-Final consumer import is not established. The owner observations
 above do not establish 300-second window accuracy, multi-minute Clone stability,
 or every failure/recovery scenario in the checklist below.
+That consumer follow-up is independent of Regrain's own release gates; its
+deferral is not a release blocker. See the [release boundary](../release.md#independent-release-boundary).
 
 ## CPU verification on 2026-10-11
 

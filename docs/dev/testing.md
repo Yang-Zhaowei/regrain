@@ -12,7 +12,7 @@ a separate versioned Controller, not this development environment.
 | Fast | All in-process CPU integrity, exception, frame/pause/caption, naming, workflow and immutable fixture regression cases. Excludes explicitly listed process-isolation, installed-wheel, optional Torch and GPU cases. |
 | Full | Fast plus fresh-process worker/CLI/import-isolation and real isolated wheel installation. Requires a wheel and manifest matching the clean current commit/tree and exact file SHA256. Optional Torch serialization cases skip when Torch is absent. Excludes GPU inference. |
 | GPU | Existing real TTS/Alignment and end-to-end integration cases, using the configured separate runtime interpreters. Missing runtime configuration fails before dispatch. This is source integration, not installed-wheel or listening acceptance. |
-| Owner | Full and configured GPU checks, with the same exact-artifact gate. Automated success still requires the manual installed-wheel production scenarios, listening, subtitles, consumer import and rollback checklist. |
+| Owner | Full and configured GPU checks, with the same exact-artifact gate. Automated success still requires the manual installed-wheel production scenarios, listening, subtitle/timeline review and rollback checklist. |
 
 ```console
 uv sync --python 3.12
@@ -30,6 +30,8 @@ candidate gate. Owner uses the same wheel/manifest arguments
 as Full plus the [runtime configuration](../../validation/README.md) and
 [human production checklist](../validation/speech-production-v0.2.md). The runner
 does not mark a candidate accepted, Ready, released or deployed.
+Optional consumer integration, including Revisual, is verified separately when
+requested and does not block Regrain's own [release gates](../release.md#independent-release-boundary).
 
 Pass normal pytest options after the profile, for example `--durations=20`,
 `--junitxml=PATH` or `-k CASE`. A filtered run verifies only that selected subset;
