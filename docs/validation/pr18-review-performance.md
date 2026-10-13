@@ -173,6 +173,11 @@ and listening/subtitle review remain owner acceptance items.
 
 ## Remaining acceptance
 
+The consumer-import follow-up recorded here belongs to separate downstream
+integration. It is deferred and does not block Regrain's own release readiness;
+the current [release boundary](../release.md#independent-release-boundary) governs
+that distinction. The original review and measurements below retain their provenance.
+
 Use the fresh exact wheel/manifest, never the old candidate's acceptance. Follow
 the [release gates](../release.md) and [ai-core checklist](speech-production-v0.2.md):
 CustomVoice/Clone runtime bootstrap, full recording and explicit long windows,

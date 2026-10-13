@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "language": "Chinese",
+  "processing": "preserve",
+  "segments": [
+    {
+      "id": "recorded",
+      "audio": "recording.wav",
+      "text": "这是本人录制的旁白。"
+    }
+  ]
+}

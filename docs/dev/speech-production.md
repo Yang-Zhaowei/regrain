@@ -6,9 +6,31 @@ precise local alignment and provenance. The independent assembler consumes
 ordered Units and pauses without loading TTS or Aligner. Each revision uses a
 fresh output directory. See [naming migration](../naming.md) for breaking changes.
 
+## Choose a workflow
+
+| Starting point | Commands | Models |
+| --- | --- | --- |
+| Approved narration text | `speech validate` → `speech render` | TTS + Aligner for render |
+| Recording and exact transcript | [Align supplied audio](#align-supplied-audio) | Aligner only |
+| Existing Units; pause, order or take changes | [Render once and revise](#render-once-and-revise) | None for plan/assemble |
+| Completed legacy run without Unit manifests | [Import the old run](#failure-recovery-and-old-runs), then plan/assemble | None |
+
+Run the commands below from one content-project directory. All run directories
+and exported plan files must be new. Model settings are configured separately in
+the [deployment guide](../deployment.md#core-runtime-configuration-and-daily-execution).
+`speech validate` validates narration scripts only; alignment requests and
+assembly plans are checked by their own commands.
+
 ## Render once and revise
 
+Start with the [CustomVoice](../../skills/regrain-speech/examples/custom-voice.json)
+or [clone](../../skills/regrain-speech/examples/clone.json) example, copied as
+`speech.json`. Use approved text and a checkpoint-supported speaker, or a trusted
+clone asset placed at the script-relative path. See the
+[render/input contract](render-entry-point.md) for voice and instruction rules.
+
 ```console
+regrain speech validate speech.json
 regrain speech render speech.json --output runs/original
 regrain speech plan runs/original --output revision.json
 regrain speech assemble revision.json --output runs/revised
@@ -20,6 +42,32 @@ order or replace one/many references with those from another exported plan.
 Assembly reuses audio/alignment; local captions are deterministically compiled
 from precise alignment and only global offsets change. For another revision,
 export a plan from `runs/revised`.
+
+Between `plan` and `assemble`, open `revision.json`: change `pause_after_ms` to
+adjust extra silence, or reorder its `units` array. Keep the exported `artifact`
+and `sha256` together. A Unit is its owned WAV/transcript/alignment bundle, not an
+arbitrary WAV; the SHA256 pins the exact `unit.json` manifest.
+
+### Replace a take or mix human and AI Units
+
+For a new TTS take, save its approved script as `replacement.json`, render it and
+export its plan beside `revision.json`:
+
+```console
+regrain speech render replacement.json --output runs/better
+regrain speech plan runs/better --output better-plan.json
+```
+
+For a human take, use `recorded-plan.json` from the
+[recording workflow below](#align-supplied-audio) instead. Copy a selected entry's
+`artifact` and `sha256` into the destination plan, keeping its revision `id` and
+desired pause, or add it as a new entry with a unique `id`. Plans exported in the
+same directory share the same reference base; if a plan moves, rebase its relative
+paths. Then assemble into a fresh run. The selected Unit supplies its own exact
+transcript and alignment. Human and AI Units use the same contract and must have
+the same sample rate; listen for volume/timbre seams after assembly.
+
+The following illustrates plan fields; normally use real pins from `speech plan`:
 
 ```json
 {
@@ -47,6 +95,11 @@ new recording is not supported; align the replacement first.
 
 ## Align supplied audio
 
+Copy the [recording example](../../skills/regrain-speech/examples/recording.json)
+as `alignment.json` beside your `recording.wav`, or create this request. Replace
+`text` with the exact spoken transcript; it is inline text, not a transcript-file
+path. A recording uses this alignment request, not a narration `speech.json`.
+
 ```json
 {
   "schema_version": 1,
@@ -66,6 +119,8 @@ regrain speech plan runs/recorded --output recorded-plan.json
 Configure only `REGRAIN_ALIGNMENT_PYTHON`/`REGRAIN_ALIGNMENT_MODEL` or matching
 `--alignment-python`/`--alignment-model` flags. `--device` defaults to `cuda:0`.
 The existing Aligner loads once for all windows; no TTS, ASR or new model is used.
+Review the reported Final and subtitle sync before reusing its Units. There is
+no separate `speech validate` mode for recording requests.
 
 ```python
 from regrain import align_speech, assemble_speech, create_assembly_plan
@@ -159,10 +214,13 @@ metadata is reused only within the current operation. Source and copied bytes
 are still hashed, markers checked, and the destination independently validated;
 there is no persistent cache based on file timestamps.
 
-Final keeps revisual's existing paths and timeline shape: `sample_rate`,
+Final's stable exchange contract keeps the existing paths and timeline shape: `sample_rate`,
 `total_frames`, `start_seconds`, `duration_seconds`, ordered `segments` containing
 `segment_id`, `start_frame`, `audio_frames`, `pause_after_frames`. Report segments
-add `unit_manifest` and `unit_sha256`. No downstream repository is modified.
+add `unit_manifest` and `unit_sha256`. Revisual is one optional independent
+consumer; its integration is deferred and does not block Regrain release
+readiness. Preserve its existing `media-pipeline` request tag as documented in
+[naming](../naming.md); it is not a Regrain Python/CLI alias.
 
 Assembly sums actual integer audio frames and half-up pause frames, shifts
 unrounded local captions by `start_frame / sample_rate`, and quantizes SRT once.

@@ -57,6 +57,10 @@ Other hosts may use different paths. The wheel also ships this folder under
 `regrain/skills/regrain-speech`. Confirm host discovery and validator access;
 the [reported Client acceptance](validation/regrain-v0.1.0-owner-acceptance.md)
 does not prove all hosts' discovery mechanisms.
+Copy the whole folder so its examples travel with it. Skill contract links use
+canonical repository URLs because repository `docs/` are not included in a
+standalone Skill or wheel. Select the Skill shipped with the chosen Controller;
+do not assume an older installed copy has the new workflow guidance.
 
 For a Client update, verify the new wheel/manifest, then use the same local-wheel
 install command with `--reinstall` (also for same-version candidate changes).

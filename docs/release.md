@@ -13,6 +13,16 @@ The [naming migration](naming.md) is a breaking change. Use the
 assembly and external-audio alignment interface. Existing model and accepted
 worker-environment paths remain unchanged.
 
+## Independent release boundary
+
+Regrain's own gates cover the exact wheel/source identity, installed CLI and
+Worker bootstrap, supported speech workflows, artifact integrity, human
+listening/subtitle review and rollback. Revisual evolves independently;
+its deferred consumer integration is not a prerequisite for Regrain Ready status
+or release. Preserve the stable artifact/exchange contract and compatibility
+identifiers in [naming](naming.md). Consumer-specific integration can be evaluated
+separately when requested, without transferring acceptance between artifacts.
+
 ## Build and identify
 
 From a clean, committed checkout, use uv to provide the pinned build backend

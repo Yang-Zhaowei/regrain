@@ -17,7 +17,8 @@ complete NLE, media framework, workflow engine or Agent control platform.
 
 PR #18's speech production workflows are merged and the owner reported successful
 real workflow use. Exact-wheel acceptance for merged source remains a separate
-[release gate](release.md); revisual integration is deferred. These are
+[release gate](release.md); revisual integration is separate, deferred work and
+does not block Regrain release readiness. These are
 verification/owner decisions, not a mandate for new development.
 
 Continue evaluating the owner's [podcast workflow](workflows/podcast-pilot.md)

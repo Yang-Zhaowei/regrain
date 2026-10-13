@@ -6,7 +6,7 @@ Behavior is defined by the [render](dev/render-entry-point.md),
 [ROADMAP](ROADMAP.md) is non-binding planning; dated validation records preserve
 what actually ran, rather than granting acceptance to later source or wheels.
 
-## Merged baseline and capabilities
+## Implemented capabilities
 
 [PR #18](https://github.com/Yang-Zhaowei/regrain/pull/18) merged on
 2026-10-13 (Asia/Shanghai) at `5d71a2c284649bb4b02ea33d0189f693872081a6`.
@@ -30,6 +30,9 @@ helpers, trim and model workers retain their documented memory limits. There is
 no ASR, automatic acoustic mismatch detection, loudness/quality correction,
 in-place resume or automatic salvage of TTS-only intermediates. See the
 [production contract](dev/speech-production.md) for limits and recovery.
+PR #20 subsequently merged at `b0786c6ae0ac88ef9c178940f62b4b2cac2dad8a`:
+clone-asset saving now stages bytes and atomically replaces the destination.
+Its CPU evidence does not establish new Torch/GPU or exact-wheel acceptance.
 
 ## Owner observations and acceptance boundary
 
@@ -44,6 +47,9 @@ The [PR #18 CPU review/performance record](validation/pr18-review-performance.md
 is separate from GPU inference, listening and installed-consumer acceptance.
 Revisual integration is deferred: producer compatibility review and byte parity
 are recorded, but an actual consumer import has not been established.
+Regrain and Revisual evolve independently. That deferred integration does not
+block Regrain's own [release readiness](release.md#independent-release-boundary);
+existing artifact shapes and the `media-pipeline` exchange identifier remain.
 
 New source or wheels, including documentation-only rebuilds, require their own
 [exact-artifact gates](release.md). Reported candidate installation does not

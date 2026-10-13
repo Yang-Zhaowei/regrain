@@ -1,13 +1,14 @@
 # regrain
 
-Local-first speech production toolkit. Read [current state](docs/CURRENT.md)
-first; it owns capability status, open problems and the evidence index. Do not
-infer release acceptance from merged code or owner workflow observations.
+Local-first speech production toolkit. Start with [README](README.md) for usage
+or [current state](docs/CURRENT.md) for capability status, open problems and
+evidence. Do not infer release acceptance from merged code or owner observations.
 
 ## Read only what the task needs
 
 | Task | Authority |
 | --- | --- |
+| Author or operate speech workflows | [regrain-speech Skill](skills/regrain-speech/SKILL.md) and [workflow guide](docs/dev/speech-production.md) |
 | Imports, CLI/configuration migration, consumer compatibility | [Naming](docs/naming.md) |
 | Speech inputs, renderer and CLI behavior | [Render contract](docs/dev/render-entry-point.md) |
 | Units, assembly, external alignment and recovery | [Production contract](docs/dev/speech-production.md) |
@@ -20,12 +21,14 @@ infer release acceptance from merged code or owner workflow observations.
 define current scope. [GPU Worker environment notes](docs/dev/core-runtime.md)
 record host-specific evidence, not portable defaults or a fresh inventory.
 `docs/contracts/` retains detailed speech rules linked from the active guides.
-`docs/prompts/` and `docs/legacy/` are historical task/architecture material.
+`docs/legacy/` is historical architecture, not current requirements.
 
 ## Boundaries
 
 Preserve the naming, speech and downstream artifact contracts. Never transfer
 acceptance to a rebuilt wheel; use the release guide's exact-artifact gates.
+Revisual is an independent optional consumer; its deferred integration does not
+block Regrain's own release readiness. Preserve existing compatibility identifiers.
 The owner controls Ready status, merge, release, repository rename and deployment.
 Do not add new modalities, NLE integration, general orchestration, or other scope unless explicitly requested.
 
