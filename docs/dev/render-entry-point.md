@@ -117,23 +117,11 @@ retain the original reason, and publish no completion marker.
 
 ## Validation and next step
 
-[PR #9](https://github.com/Yang-Zhaowei/media-pipeline/pull/9) is merged. Real
-ai-core generation, human listening and subtitle synchronization passed.
-[PR #11](https://github.com/Yang-Zhaowei/media-pipeline/pull/11) is merged and
-[Issue #10](https://github.com/Yang-Zhaowei/media-pipeline/issues/10) is closed.
-The owner marked the real ai-core CLI render and human acceptance merge gates
-complete in PR #11. Recorded CPU validation and closure status are in
-[CURRENT](../CURRENT.md#agent-facing-speech-cli); this documentation update
-does not rerun model integration.
-
-[PR #15](https://github.com/Yang-Zhaowei/media-pipeline/pull/15) is merged and
-Issue #14 is closed. The owner accepted a real three-unit clone render,
-one asset/Base load, complete downstream artifacts, identity/consistency,
-transitions, and subtitle sync. See the
-[exact-head evidence and replay procedure](../validation/clone-render-acceptance.md).
-
-[Issue #8](https://github.com/Yang-Zhaowei/media-pipeline/issues/8) remains open
-for production narration stability, including cross-segment emotion/delivery drift.
+See [CURRENT](../CURRENT.md) for the merged baseline, owner observations and open
+problems. Its [historical evidence index](../CURRENT.md#historical-evidence)
+links the original PR #9/#11 CustomVoice/CLI acceptance and PR #15 three-unit
+clone acceptance, including the [exact-head replay record](../validation/clone-render-acceptance.md).
+These historical results do not establish acceptance for a rebuilt wheel.
 
 The renderer does not automatically split, interpret or rewrite the manuscript.
 

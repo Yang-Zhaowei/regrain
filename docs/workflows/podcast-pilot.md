@@ -81,8 +81,9 @@ alternate spoken/display text is not an existing feature.
    `final/timeline.json` to assemble the video with the chosen finishing tool.
    The renderer already assembles speech and shifts captions by integer-frame
    offsets; use the final timeline to place visuals.
-6. For a pause-only edit, import the completed run, create an assembly plan with
-   the revised pause, inspect it, and assemble into a new run directory. For a
+6. For a pause-only edit, export an assembly plan from the completed run, revise
+   the pause, inspect it, and assemble into a new run directory. Use `import-run`
+   first only for legacy runs without Unit manifests. For a
    replacement unit, add a verified artifact from another run or recording and
    assemble the same way. Use `regrain speech render` only for text that needs
    new synthesis. Update visual timing from the new timeline, then export again.

@@ -188,8 +188,9 @@ settings.
 
 For external audio, validate the prepared alignment request and run
 `regrain speech align request.json --output <new-run-dir>` with the alignment
-runtime options. To reuse successful units, import the prior run, create and
-review an assembly plan, then assemble into a new run directory. See the
+runtime options. To reuse successful Units, export/review an assembly plan and
+assemble into a new run directory. Use `speech import-run` first only for legacy
+runs without Unit manifests. See the
 [production workflow guide](dev/speech-production.md) for command contracts.
 Preserve the owner's desired local configuration rather than changing global
 environment files.

@@ -1,109 +1,91 @@
-# Current State
+# Current state
 
-## Production speech pipeline
+This page owns current capability status, open problems and the evidence index.
+Behavior is defined by the [render](dev/render-entry-point.md),
+[production](dev/speech-production.md) and [naming](naming.md) contracts.
+[ROADMAP](ROADMAP.md) is non-binding planning; dated validation records preserve
+what actually ran, rather than granting acceptance to later source or wheels.
 
-`text → TTS → forced alignment → audio postprocess → captions → WAV + SRT`
+## Merged baseline and capabilities
 
-Caller-approved Performance Units produce one TTS request each; subtitle
-segmentation is independent. Input and instruction rules are maintained in the
-[render contract](dev/render-entry-point.md) and [authoring Skill](../skills/regrain-speech/SKILL.md).
+[PR #18](https://github.com/Yang-Zhaowei/regrain/pull/18) merged on
+2026-10-13 (Asia/Shanghai) at `5d71a2c284649bb4b02ea33d0189f693872081a6`.
+It adds the v0.2.0 production workflows to the PR #17 baseline
+`1176b9e5bf67b4959058af2b4a2e94bfc2453b24`:
 
-[PR #9](https://github.com/Yang-Zhaowei/media-pipeline/pull/9) is merged. Real
-ai-core validation and human listening passed. Historical evidence remains in
-the [pipeline closure](validation/speech-v0-closure.md) and
-[segmented-render acceptance](validation/segmented-speech-v0-acceptance.md).
+- `regrain` imports, CLI and `REGRAIN_*` settings replace the legacy names;
+  this is a breaking migration. The existing downstream `media-pipeline`
+  wire-format tag and WAV/SRT/frame-timeline/completion contracts remain.
+- Caller-approved Performance Units render through CustomVoice or reusable Base
+  clone TTS, forced alignment, deterministic postprocess and captions.
+  Each Unit makes one TTS request; subtitle segmentation is independent.
+- Verified Units support take selection, cross-run replacement, pause edits and
+  assembly into fresh runs without model calls.
+- Recordings with exact transcripts use forced alignment and the same Unit/Final
+  contracts. Preserve mode retains selected PCM; long recordings require explicit
+  frame windows and corresponding transcripts, at most 300 seconds per window.
 
-## Agent-facing speech CLI and release candidate
+Controller assembly and recording preflight use bounded PCM blocks. Public eager
+helpers, trim and model workers retain their documented memory limits. There is
+no ASR, automatic acoustic mismatch detection, loudness/quality correction,
+in-place resume or automatic salvage of TTS-only intermediates. See the
+[production contract](dev/speech-production.md) for limits and recovery.
 
-[Issue #10](https://github.com/Yang-Zhaowei/media-pipeline/issues/10) is closed
-via [PR #11](https://github.com/Yang-Zhaowei/media-pipeline/pull/11), with owner
-real ai-core CLI and human acceptance. Current identity and compatibility are
-defined in [naming](naming.md); command behavior is in the [CLI contract](dev/render-entry-point.md#command-line).
+## Owner observations and acceptance boundary
 
-## Reusable Base voice-clone runtime
+The owner reported successful real ai-core Clone/CustomVoice rendering, external
+alignment, editable assembly and mixed human/AI output during PR #18. The
+[workflow evidence](validation/speech-production-v0.2.md#pr-18-owner-workflow-observations)
+records those scenarios, the reported `33b1764` wheel identity and remaining
+provenance limits. These observations establish useful workflow evidence; they
+do not automatically establish exact-wheel acceptance for merged `main`.
 
-[Issue #12](https://github.com/Yang-Zhaowei/media-pipeline/issues/12) is closed
-via [PR #13](https://github.com/Yang-Zhaowei/media-pipeline/pull/13), squash
-merged on 2026-10-04. The independent Qwen3-TTS 12Hz Base normal-ICL runtime
-creates reusable local CPU tensor assets and produces production-compatible
-mono PCM16 `TTSArtifact` outputs. PR #13 left CustomVoice, the renderer, and the
-speech CLI unchanged; PR #15 adds segmented selection as recorded below.
+The [PR #18 CPU review/performance record](validation/pr18-review-performance.md)
+is separate from GPU inference, listening and installed-consumer acceptance.
+Revisual integration is deferred: producer compatibility review and byte parity
+are recorded, but an actual consumer import has not been established.
 
-The owner accepted asset creation, fresh-process reuse and two utterances at
-exact PR HEAD `8d14639976c7bdcf4d2c1a6ddce3d9b7672cc200`.
-See the [closure evidence](validation/voice-clone-closure.md) and
-[runtime contract / replay commands](dev/voice-clone-runtime.md).
+New source or wheels, including documentation-only rebuilds, require their own
+[exact-artifact gates](release.md). Reported candidate installation does not
+certify a merged-main wheel for production or release. The owner controls Ready,
+merge, release and deployment.
 
-## Segmented clone rendering
+## Open problems and next decisions
 
-[Issue #14](https://github.com/Yang-Zhaowei/media-pipeline/issues/14) is closed
-via [PR #15](https://github.com/Yang-Zhaowei/media-pipeline/pull/15), squash
-merged on 2026-10-04 (Asia/Shanghai). Scripts select exactly one legacy
-`speaker` or relative clone `voice`; clone instructions must be omitted/empty.
-CustomVoice and downstream behavior remain compatible. Static validation is
-portable; one TTS subprocess reuses one loaded asset and one Base engine.
+- [Issue #8](https://github.com/Yang-Zhaowei/regrain/issues/8) remains open for
+  multi-segment emotion/delivery drift and long-form narration stability.
+  Original v0.1.0 acceptance found variable Clone consistency; unattended Clone
+  production quality was not established. New workflow successes do not resolve it.
+- The owner-accepted [Qwen-only Layer 1 experiment](validation/qwen-clone-prosody-acceptance.md)
+  found promising continuity for roughly 15-second continuous generation.
+  Context reset remains the strongest engineering hypothesis, with
+  concatenation/topology confounds; sampling-off alone did not eliminate drift.
+  Both greedy listening-repeat PCM comparisons passed in the fixed environment.
+  Multi-minute stability and a controlled old/new regression comparison remain
+  open; a PR #17 regression has not been ruled out.
+- Decide when to select and verify an exact merged-source wheel and when to
+  resume downstream revisual evaluation. Neither requires speculative features;
+  use the [podcast pilot](workflows/podcast-pilot.md) and [admission rule](ROADMAP.md#feature-admission-rule).
 
-The owner accepted a real three-unit ai-core render, final artifacts, voice
-identity/consistency, transitions and subtitle sync. See the [contract](dev/render-entry-point.md) and
-[exact-head evidence / replay](validation/clone-render-acceptance.md).
+## Historical evidence
 
-## Current work
+Earlier acceptance remains tied to its recorded source/artifact, not this baseline.
+Historical repository URLs and runtime paths retain their actual names.
 
-PR #17 is merged at `1176b9e5bf67b4959058af2b4a2e94bfc2453b24`, the
-baseline for the v0.2.0 production workflow candidate.
-[Historical CPU/package verification](validation/regrain-v0.1.0-candidate.md)
-and [owner GPU / Client Agent acceptance](validation/regrain-v0.1.0-owner-acceptance.md)
-are separate evidence. The latter applies only to original source `dbcf0db…`
-and its recorded wheel hash: runtime integration and pronunciation/subtitles
-passed; CustomVoice consistency was acceptable, Clone consistency was variable,
-and unattended Clone production quality was not established. Codex 6.1 Luna
-and Pi reported successful Clone authoring/static validation; Codex's initial
-failure was subprocess PATH discovery.
+| Milestone | Evidence and identity |
+| --- | --- |
+| Speech Pipeline v0 (PR #5), then Performance Units (PR #9) | [Pipeline closure](validation/speech-v0-closure.md), [segmented acceptance](validation/segmented-speech-v0-acceptance.md); real ai-core and human acceptance |
+| Agent-facing CLI (PR #11 / Issue #10, merged 2026-10-03) | [Owner merge gates](https://github.com/Yang-Zhaowei/media-pipeline/pull/11); real ai-core CLI and human acceptance |
+| Reusable Base clone runtime (PR #13 / Issue #12, merged 2026-10-04) | [Closure](validation/voice-clone-closure.md); owner accepted creation, fresh-process reuse and two utterances at `8d14639976c7bdcf4d2c1a6ddce3d9b7672cc200` |
+| Segmented clone render (PR #15 / Issue #14, merged 2026-10-04) | [Exact-head evidence](validation/clone-render-acceptance.md); three-unit render, one asset/Base load, final artifacts and human acceptance; delivery drift remained |
+| Clone prosody Layer 1 (PR #16, merged 2026-10-09T19:04:43Z) | [Owner acceptance](validation/qwen-clone-prosody-acceptance.md) at implementation HEAD `506b30dd59702348d6ff11bc7fad435acddf3a76`, all 13 matrix runs and blind listening; merge `ff73167436937b3788c297b11d9c4b67235c2f5d` |
+| v0.1.0 candidate (PR #17) | [CPU/package record](validation/regrain-v0.1.0-candidate.md), [owner GPU/Client record](validation/regrain-v0.1.0-owner-acceptance.md); original `dbcf0db…` source and recorded wheel only; Client authoring/static validation passed after PATH discovery was corrected |
 
-The v0.2.0 candidate consolidates imports/CLI/configuration under `regrain`, adds
-verified reusable speech Units and model-free editable assembly, and accepts
-recordings with exact transcripts through Forced Alignment. Final WAV/SRT/frame
-timeline and completion contracts remain compatible for revisual. See
-[production workflows](dev/speech-production.md), [migration](naming.md) and
-[verification](validation/speech-production-v0.2.md).
+## Environments and verification
 
-PR #18's [independent review and measured CPU optimization](validation/pr18-review-performance.md)
-adds bounded Controller PCM processing, exact per-operation snapshot checks and
-atomic Final completion publication. CPU benchmark byte parity and test profiles
-do not establish model accuracy or ai-core acceptance; the new wheel has its own
-artifact identity and owner gates.
-
-New source/wheels require their own identities and [exact-artifact acceptance](release.md).
-Old GPU acceptance applies to its original artifact only. No v0.2 GPU inference,
-deployment, release or merge approval is claimed. Git origin now points at
-`Yang-Zhaowei/regrain`; this task did not administer that rename. Prior PR URLs
-and model environment paths remain historical evidence.
-
-[Issue #8](https://github.com/Yang-Zhaowei/media-pipeline/issues/8) remains open
-for production narration stability, including the accepted clone render's
-remaining cross-segment emotion/delivery drift. Evaluate with existing tools.
-
-The owner accepted the [Qwen-only Layer 1 experiment](validation/qwen-clone-prosody-acceptance.md)
-at implementation HEAD `506b30dd59702348d6ff11bc7fad435acddf3a76`: all 13 matrix
-runs and owner blind listening passed; detailed counts and provenance stay in that record.
-Continuous generation showed promising perceived continuity for the roughly
-15-second corpus; context reset is the strongest current engineering hypothesis,
-with concatenation/topology confounds. Sampling-off alone did not eliminate
-delivery changes. Owner PCM comparison passed for both greedy listening repeat
-pairs in the fixed environment; multi-minute stability remains open.
-[PR #16](https://github.com/Yang-Zhaowei/media-pipeline/pull/16) merged on
-2026-10-09T19:04:43Z at
-`ff73167436937b3788c297b11d9c4b67235c2f5d`. The owner-reported real GPU and
-blind-listening evidence remains tied to implementation HEAD
-`506b30dd59702348d6ff11bc7fad435acddf3a76`; it does not establish PR #17 or
-release-wheel acceptance. Issue #8 continues as production-use
-validation, without an established root cause or universal optimal unit length.
-The new Clone observations lack a controlled old-versus-new comparison, so a
-PR #17 regression is not strictly excluded. Closure changes no production
-behavior and does not resolve this question.
-
-See the [podcast pilot workflow](workflows/podcast-pilot.md) and
-[project roadmap](ROADMAP.md). Runtime setup is in [core runtime notes](dev/core-runtime.md).
-
-Pure processing and CPU unit tests run without CUDA. Real model integration is
-validated separately on ai-core; see [validation instructions](../validation/README.md).
+Use the [uv development/test profiles](dev/testing.md), [build identity gates](release.md)
+and [Client/Core deployment guide](deployment.md) for operational commands.
+The lightweight Controller is separate from the existing GPU Workers;
+[ai-core notes](dev/core-runtime.md) preserve reported host/runtime evidence.
+Pure processing and CPU tests require no CUDA. Real model checks run separately
+on ai-core; the [source E2E driver](../validation/README.md) is not exact-wheel acceptance.

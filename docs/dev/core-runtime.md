@@ -1,6 +1,15 @@
-# ai-core Development Runtime
+# ai-core GPU Worker environment evidence
 
-This document records the currently verified GPU integration environment. It is host-specific evidence, not portable project configuration.
+This document preserves reported GPU Worker versions, paths and historical
+integration results. It is host-specific evidence, not portable configuration
+or a fresh inventory. [CURRENT](../CURRENT.md) owns capability/acceptance status;
+[deployment](../deployment.md) owns the installed Controller/runtime setup.
+
+Development uses a uv checkout on PC_Client; build tools are supplied per
+invocation. Client's `uv tool` CLI and Core's versioned uv Controller are separate
+installations. The existing TTS and Aligner Workers below retain their own Python
+environments and model dependencies; do not sync the development project into
+them. Workers load the selected Controller package through its bootstrap.
 
 ## Host
 
@@ -130,6 +139,7 @@ GPU integration tests must be explicitly separated from ordinary unit tests.
 
 The repository is developed on PC_Client.
 
-`ai-core` is a GPU integration target, not the primary editing workspace.
+`ai-core` hosts GPU integration and owner-selected production Controller/Worker
+execution. It is not the primary editing workspace.
 
 Do not hard-code these absolute paths into portable application logic.
