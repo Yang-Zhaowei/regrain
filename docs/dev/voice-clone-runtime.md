@@ -63,6 +63,11 @@ import, checkpoint load, upstream generation, and output/WAV failures.
 Whitespace-only required strings fail; valid text/transcript values are
 preserved exactly. Transcript correctness is the caller's responsibility.
 
+Saving stages the validated payload in the destination directory and atomically
+replaces the destination only after serialization succeeds. Serialization or
+replacement errors preserve an existing asset and leave a new destination absent;
+staging cleanup is best effort. This guarantees atomic publication, not crash durability.
+
 Importing either module needs no torch, qwen_tts, NumPy, or CUDA. Portable
 validators check requests and the payload envelope using the standard library.
 Save/load additionally need torch, lazily imported; they need no qwen_tts or
