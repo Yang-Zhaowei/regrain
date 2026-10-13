@@ -38,6 +38,7 @@ copied into the content project as `speech.json`.
   asset inside the script directory and only omitted/exactly empty `instruct`.
   CustomVoice can inherit top-level direction, clear it with `""`, or override it.
   Do not add experimental sampling controls as production fields.
+- For ordinary CustomVoice narration, omit instruct by default. Add local direction only when explicitly needed and approved.
 
 ```console
 regrain speech validate speech.json
